@@ -17,11 +17,17 @@ npm run generate:api
 
 ```bash
 cp .env.example .env.local
-# Set NEXT_PUBLIC_API_BASE_URL to the API origin (OpenAPI currently has no `servers` entry).
+# Set the API, Clerk, and Supabase public values in .env.local.
 npm run dev
 ```
 
-Open `http://localhost:3000/cases`, then connect with a Supabase access token and tenant UUID. The MVP keeps credentials in React memory only. A Supabase Auth integration can call `connect(accessToken, tenantId)` from `useAuthTenant()` after sign-in.
+Get the Clerk publishable and secret keys from **Clerk Dashboard → Configure → Developers → API keys**. Put the publishable key in `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` and the secret key in `CLERK_SECRET_KEY`; never add the secret key to a `NEXT_PUBLIC_` variable or commit `.env.local`.
+
+Set `NEXT_PUBLIC_SUPABASE_URL` and the project's publishable key (or legacy anon key) from **Supabase Dashboard → Project Settings → API**. Supabase Auth must have the Clerk custom OIDC provider registered as `custom:clerk`. The frontend exchanges the Clerk session token for a short-lived Supabase session, then sends that Supabase access token to the NestJS API. Tokens remain in memory and are never written to local storage.
+
+The API requires a tenant UUID. Configure a signed `tenant_id` UUID claim in Clerk session tokens, or use a Clerk organization whose ID is itself a UUID. Clerk's usual `org_...` IDs are not Anvil tenant UUIDs; in that case, map the active organization to the tenant UUID in a custom claim. The backend still checks active tenant membership for every request.
+
+Open `http://localhost:3000/sign-in` to sign in. Protected routes redirect unauthenticated users to Clerk's sign-in page.
 
 ## Contract boundaries
 
@@ -37,9 +43,10 @@ Open `http://localhost:3000/cases`, then connect with a Supabase access token an
 ```text
 src/
   app/                  App Router pages, layout, providers, and Tailwind/Astryx CSS
-  components/           Presentational shell and session form
+  components/           Presentational shell and Clerk account controls
   hooks/                TanStack Query case and mutation hooks
   lib/
     api/                Generated OpenAPI types, typed fetchers, encrypted upload flow
-    auth/               In-memory bearer and tenant context
+    auth/               Clerk-to-Supabase token exchange and tenant context
+    supabase/           Ephemeral browser auth client for OIDC token exchange
 ```

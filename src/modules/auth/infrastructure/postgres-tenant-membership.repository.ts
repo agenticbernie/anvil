@@ -16,7 +16,7 @@ export class PostgresTenantMembershipRepository implements TenantMembershipRepos
         `SELECT membership.role
          FROM public.memberships AS membership
          JOIN public.users AS app_user ON app_user.id = membership.user_id
-         WHERE membership.tenant_id = $1 AND app_user.auth_user_id = $2
+         WHERE membership.tenant_id = $1
            AND $2::uuid = (SELECT auth.uid())
            AND public.is_tenant_member($1)
            AND membership.status = 'active' AND membership.deleted_at IS NULL

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
-import { SessionPanel } from "@/components/session-panel";
+import { AccountMenu } from "@/components/account-menu";
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -40,7 +40,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <span className="font-semibold tracking-tight">anvil<span className="text-emerald-800">.</span></span>
           </div>
           <p className="hidden text-sm text-slate-500 lg:block">Credit operations <span className="mx-2 text-slate-300">/</span> Cases</p>
-          <SessionPanel />
+          <AccountMenu />
         </header>
         <main id="main-content" className="mx-auto w-full max-w-[1440px] px-5 py-8 md:px-9 md:py-10">
           {children}

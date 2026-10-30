@@ -21,6 +21,7 @@ import { IdempotencyModule } from './modules/idempotency/idempotency.module.js';
 import { MemosModule } from './modules/memos/memos.module.js';
 import { ReviewsModule } from './modules/reviews/reviews.module.js';
 import { TenantsModule } from './modules/tenants/tenants.module.js';
+import { ClerkWebhooksModule } from './modules/webhooks/clerk/clerk-webhooks.module.js';
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { TenantsModule } from './modules/tenants/tenants.module.js';
     IdempotencyModule,
     AuthModule,
     TenantsModule,
+    ClerkWebhooksModule,
     CasesModule,
     DocumentsModule,
     ExtractionModule,

@@ -183,3 +183,21 @@ For extraction or memo jobs, use the corresponding queue (`document.extract` or 
 ## Escalation data
 
 Include service name, deployment ID, UTC time range, request ID, queue name, job/event IDs, tenant ID, status, attempt count, and safe error code. Exclude credentials, signed URLs, PII, raw LLM prompts/responses, and document content.
+# Clerk webhook delivery and IP filtering
+
+The webhook endpoint is `POST /v1/webhooks/clerk`. Verify the endpoint's signing
+secret in Clerk Dashboard → Webhooks and set it as `CLERK_WEBHOOK_SECRET`. Subscribe
+to `user.created`, `organization.created`, and `organization_membership.created`.
+Clerk retries failed deliveries; use the same webhook event ID for deduplication.
+
+Security relies on cryptographic Svix signature verification, which is sufficient
+for MVP. For production hardening, configure IP allowlisting at the Render/Cloudflare
+edge level using the official Svix IP list: https://docs.svix.com/webhook-ips.json.
+Avoid trusting `x-forwarded-for` inside the application unless the proxy chain is
+explicitly configured and strips client-supplied forwarding headers.
+
+If deliveries fail with a temporary error, check that the Supabase Clerk OIDC
+identity is available and that `CLERK_WEBHOOK_SECRET` matches the Clerk endpoint.
+An organization membership event can arrive before its organization event; the
+service returns a retryable error until the organization tenant exists. Replay the
+failed delivery from Clerk Dashboard → Webhooks → endpoint → Message Attempts.

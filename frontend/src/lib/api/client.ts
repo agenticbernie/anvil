@@ -37,7 +37,7 @@ export class ApiError extends Error {
 
 const safeStatusMessages: Record<number, string> = {
   400: "The request was rejected. Review the supplied values and try again.",
-  401: "Your access token is missing or expired. Connect a valid Supabase session.",
+  401: "Your sign-in session is missing or expired. Sign in again.",
   403: "This account does not have access to the selected tenant or action.",
   404: "The requested record was not found in this tenant.",
   409: "A conflict occurred. Reconcile the resource state before retrying; a mutation may already have committed.",
@@ -59,8 +59,15 @@ async function requestJson<T>(
   idempotencyKey?: string,
 ): Promise<T> {
   const headers = new Headers(init.headers);
+  let accessToken: string | null;
+  try {
+    accessToken = await credentials.getAccessToken();
+  } catch {
+    throw new ApiError(401, safeStatusMessages[401]);
+  }
+  if (!accessToken) throw new ApiError(401, safeStatusMessages[401]);
   headers.set("Accept", "application/json");
-  headers.set("Authorization", `Bearer ${credentials.authToken}`);
+  headers.set("Authorization", `Bearer ${accessToken}`);
   headers.set("x-tenant-id", credentials.tenantId);
   if (init.body !== undefined && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
