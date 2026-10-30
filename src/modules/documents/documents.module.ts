@@ -69,6 +69,6 @@ import { PostgresDocumentVersionRepository } from './infrastructure/postgres-doc
       ),
     },
   ],
-  exports: [DocumentService, DocumentEncryptionService, DocumentTextCipherService, DOCUMENT_TEXT_CIPHER, DOCUMENT_VERSION_REPOSITORY, DOCUMENT_REPOSITORY, DOCUMENT_RESERVATION_MAINTENANCE_REPOSITORY, PROCESSING_JOB_REPOSITORY, OUTBOX_REPOSITORY, STORAGE_PROVIDER],
+  exports: [DocumentService, DocumentEncryptionService, DocumentTextCipherService, DOCUMENT_TEXT_CIPHER, DOCUMENT_VERSION_REPOSITORY, DOCUMENT_REPOSITORY, DOCUMENT_RESERVATION_MAINTENANCE_REPOSITORY, PROCESSING_JOB_REPOSITORY, OUTBOX_REPOSITORY, StorageModule],
 })
 export class DocumentsModule {}
