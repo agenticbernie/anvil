@@ -4,6 +4,7 @@ import type { ConfigService } from '@nestjs/config';
 import type { Pool, PoolClient } from 'pg';
 import type { PinoLogger } from 'nestjs-pino';
 import { ClerkWebhookService } from './clerk-webhook.service.js';
+import type { ClerkOrganizationMetadataService } from './clerk-organization-metadata.service.js';
 
 const secret = `whsec_${Buffer.from('unit-test-signing-key').toString('base64')}`;
 const tenantId = '11111111-1111-4111-8111-111111111111';
@@ -21,14 +22,15 @@ function setup(responses: { rows?: Record<string, unknown>[]; rowCount?: number 
   const query = jest.fn(async (_sql: string, _values?: readonly unknown[]) => responses.shift() ?? { rows: [], rowCount: 1 });
   const client = { query, release: jest.fn() } as unknown as PoolClient;
   const pool = { connect: jest.fn().mockResolvedValue(client) } as unknown as Pool;
-  const config = { get: jest.fn().mockReturnValue(secret) } as unknown as ConfigService;
-  const logger = { info: jest.fn(), error: jest.fn() } as unknown as PinoLogger;
-  return { service: new ClerkWebhookService(pool, config, logger), query };
+  const config = { get: jest.fn((key: string) => key === 'CLERK_WEBHOOK_SECRET' ? secret : 'sk_test_unit') } as unknown as ConfigService;
+  const logger = { info: jest.fn(), warn: jest.fn(), error: jest.fn() } as unknown as PinoLogger;
+  const organizationMetadata = { setTenantId: jest.fn().mockResolvedValue(undefined) } as unknown as ClerkOrganizationMetadataService;
+  return { service: new ClerkWebhookService(pool, config, logger, organizationMetadata), query, organizationMetadata };
 }
 
 describe('ClerkWebhookService provisioning', () => {
   it('creates an organization tenant and links its creator as tenant admin in one transaction', async () => {
-    const { service, query } = setup([
+    const { service, query, organizationMetadata } = setup([
       { rows: [], rowCount: null },
       { rows: [{ event_id: 'evt_org' }], rowCount: 1 },
       { rows: [{ id: tenantId }], rowCount: 1 },
@@ -48,6 +50,8 @@ describe('ClerkWebhookService provisioning', () => {
     ]));
     expect(query.mock.calls.find(([sql]) => String(sql).includes('INSERT INTO public.memberships'))?.[1])
       .toEqual([tenantId, userId, 'tenant_admin']);
+    expect(organizationMetadata.setTenantId).toHaveBeenCalledWith('org_acme', tenantId);
+    expect(query.mock.calls.at(-1)?.[0]).toBe('COMMIT');
   });
 
   it('creates membership for an existing Clerk user and assigns least privilege for org:member', async () => {

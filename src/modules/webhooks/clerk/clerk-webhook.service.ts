@@ -5,6 +5,7 @@ import type { Pool } from 'pg';
 import { PG_POOL } from '../../../infrastructure/database/postgres.tokens.js';
 import { Inject } from '@nestjs/common';
 import { verifyClerkWebhookSignature } from './clerk-webhook.signature.js';
+import { ClerkOrganizationMetadataService } from './clerk-organization-metadata.service.js';
 
 interface ClerkEvent {
   readonly type: string;
@@ -21,12 +22,18 @@ interface ClerkEvent {
   };
 }
 
+interface OrganizationMetadataSync {
+  readonly organizationId: string;
+  readonly tenantId: string;
+}
+
 @Injectable()
 export class ClerkWebhookService {
   constructor(
     @Inject(PG_POOL) private readonly pool: Pool,
     private readonly config: ConfigService,
     @InjectPinoLogger(ClerkWebhookService.name) private readonly logger: PinoLogger,
+    private readonly organizationMetadata: ClerkOrganizationMetadataService,
   ) {}
 
   async handle(rawBody: Buffer | undefined, headers: { id: string | undefined; timestamp: string | undefined; signature: string | undefined }): Promise<void> {
@@ -46,6 +53,8 @@ export class ClerkWebhookService {
     }
 
     const client = await this.pool.connect();
+    let organizationMetadataSync: OrganizationMetadataSync | undefined;
+    let duplicate = false;
     try {
       await client.query('BEGIN');
       const claimed = await client.query(
@@ -54,16 +63,23 @@ export class ClerkWebhookService {
         [headers.id, event.type],
       );
       if (claimed.rowCount === 0) {
+        duplicate = true;
+        if (event.type === 'organization.created' && event.data.id) {
+          const existingTenant = await client.query<{ id: string }>(
+            `SELECT id::text AS id FROM public.tenants
+             WHERE provisioned_by_clerk_organization_id = $1 LIMIT 1`,
+            [event.data.id],
+          );
+          const tenantId = existingTenant.rows[0]?.id;
+          if (tenantId) organizationMetadataSync = { organizationId: event.data.id, tenantId };
+        }
         await client.query('COMMIT');
-        this.logger.info({ eventId: headers.id, eventType: event.type }, 'Duplicate Clerk webhook acknowledged');
-        return;
+      } else {
+        if (event.type === 'user.created') await this.provisionUser(client, event);
+        if (event.type === 'organization.created') organizationMetadataSync = await this.provisionOrganization(client, event);
+        if (event.type === 'organization_membership.created') await this.provisionOrganizationMembership(client, event);
+        await client.query('COMMIT');
       }
-
-      if (event.type === 'user.created') await this.provisionUser(client, event);
-      if (event.type === 'organization.created') await this.provisionOrganization(client, event);
-      if (event.type === 'organization_membership.created') await this.provisionOrganizationMembership(client, event);
-      await client.query('COMMIT');
-      this.logger.info({ eventId: headers.id, eventType: event.type }, 'Clerk webhook processed');
     } catch (error) {
       try { await client.query('ROLLBACK'); } catch (rollbackError) {
         throw new AggregateError([error, rollbackError], 'Clerk webhook transaction and rollback both failed.');
@@ -73,6 +89,14 @@ export class ClerkWebhookService {
     } finally {
       client.release();
     }
+
+    if (organizationMetadataSync) {
+      await this.syncOrganizationTenantMetadata(organizationMetadataSync, headers.id, duplicate);
+    }
+    this.logger.info(
+      { eventId: headers.id, eventType: event.type, duplicate },
+      duplicate ? 'Duplicate Clerk webhook acknowledged' : 'Clerk webhook processed',
+    );
   }
 
   private async provisionUser(client: import('pg').PoolClient, event: ClerkEvent): Promise<void> {
@@ -105,7 +129,7 @@ export class ClerkWebhookService {
     );
   }
 
-  private async provisionOrganization(client: import('pg').PoolClient, event: ClerkEvent): Promise<void> {
+  private async provisionOrganization(client: import('pg').PoolClient, event: ClerkEvent): Promise<OrganizationMetadataSync> {
     const organizationId = event.data.id;
     const name = event.data.name?.trim();
     if (!organizationId || !name || name.length > 200) throw new BadRequestException('Clerk organization payload is invalid.');
@@ -125,6 +149,7 @@ export class ClerkWebhookService {
       if (!userId) throw new Error('Could not persist organization creator mapping.');
       await this.upsertMembership(client, tenantId, userId, 'tenant_admin');
     }
+    return { organizationId, tenantId };
   }
 
   private async provisionOrganizationMembership(client: import('pg').PoolClient, event: ClerkEvent): Promise<void> {
@@ -176,5 +201,21 @@ export class ClerkWebhookService {
        ON CONFLICT (tenant_id, user_id) DO UPDATE SET role = EXCLUDED.role, status = 'active', deleted_at = NULL`,
       [tenantId, userId, role],
     );
+  }
+
+  private async syncOrganizationTenantMetadata(
+    sync: OrganizationMetadataSync,
+    eventId: string,
+    duplicate: boolean,
+  ): Promise<void> {
+    try {
+      await this.organizationMetadata.setTenantId(sync.organizationId, sync.tenantId);
+    } catch (error) {
+      this.logger.warn(
+        { eventId, organizationId: sync.organizationId, tenantId: sync.tenantId, duplicate, err: error },
+        'Tenant committed, but Clerk organization metadata sync failed; webhook retry can repair it',
+      );
+      throw new ServiceUnavailableException('Tenant was created, but Clerk organization metadata could not be updated. Retry the webhook.');
+    }
   }
 }
