@@ -29,7 +29,7 @@ services:
     name: anvil-web
     runtime: node
     plan: free
-    buildCommand: npm ci && npm run build
+    buildCommand: npm ci --include=dev && npm run build
     startCommand: npm run start:web
     healthCheckPath: /health/ready
     envVars:
@@ -67,7 +67,7 @@ services:
     name: anvil-worker
     runtime: node
     plan: 0.5c-512mb
-    buildCommand: npm ci && npm run build
+    buildCommand: npm ci --include=dev && npm run build
     startCommand: npm run start:worker
     maxShutdownDelaySeconds: 120
     envVars:

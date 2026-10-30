@@ -27,7 +27,7 @@ export class PostgresDocumentReservationMaintenanceRepository implements Documen
         'SELECT * FROM public.claim_expired_document_reservations_with_finalized_object($1)',
         [limit],
       );
-      return result.rows.map((row) => ({
+      return result.rows.map((row: any) => ({
         tenantId: row.tenant_id,
         documentId: row.document_id,
         stagingObjectKey: row.staging_object_key,
@@ -58,7 +58,7 @@ export class PostgresDocumentReservationMaintenanceRepository implements Documen
         'SELECT * FROM public.claim_document_staging_cleanup_retries_with_finalized_key($1)',
         [limit],
       );
-      return result.rows.map((row) => ({
+      return result.rows.map((row: any) => ({
         tenantId: row.tenant_id,
         documentId: row.document_id,
         stagingObjectKey: row.staging_object_key,
