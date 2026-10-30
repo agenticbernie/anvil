@@ -17,15 +17,18 @@ import { TENANT_MEMBERSHIP_REPOSITORY } from '../modules/auth/auth.tokens.js';
 import { RolesGuard } from '../modules/auth/roles.guard.js';
 import { SupabaseAuthGuard } from '../modules/auth/supabase-auth.guard.js';
 import { TenantContextGuard } from '../modules/auth/tenant-context.guard.js';
+import { ClerkTenantMappingController } from '../modules/tenants/api/clerk-tenant-mapping.controller.js';
+import { TenantMappingService } from '../modules/tenants/services/tenant-mapping.service.js';
 
 @Module({
-  controllers: [CasesController, CaseDocumentsController, DocumentsController, FactsController, MemosController, JobsController, HealthController],
+  controllers: [CasesController, CaseDocumentsController, DocumentsController, FactsController, MemosController, JobsController, HealthController, ClerkTenantMappingController],
   providers: [
     { provide: CaseService, useValue: {} },
     { provide: DocumentService, useValue: {} },
     { provide: ExtractionService, useValue: {} },
     { provide: MemoService, useValue: {} },
     { provide: ProcessingJobStatusService, useValue: {} },
+    { provide: TenantMappingService, useValue: {} },
     { provide: TENANT_MEMBERSHIP_REPOSITORY, useValue: { findActiveRole: async () => null } },
     SupabaseAuthGuard,
     TenantContextGuard,

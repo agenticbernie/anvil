@@ -252,6 +252,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/memos/{memoId}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reject a draft memo with a documented reason.
+         * @description Changes only a draft memo to rejected, stores the reason encrypted, and writes a memo.rejected audit event containing a keyed reason hash.
+         */
+        post: operations["MemosController_reject"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/jobs/{jobId}": {
         parameters: {
             query?: never;
@@ -324,6 +344,26 @@ export interface paths {
          * @description Reports that detailed dependency probes are not available in this deployment foundation.
          */
         get: operations["HealthController_getDependencies"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/tenants/by-clerk-org": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Resolve the active Anvil tenant for a Clerk organization.
+         * @description Requires a Supabase bearer token whose Clerk identity has an active membership in the requested organization. Unprovisioned or inaccessible organizations return 404.
+         */
+        get: operations["ClerkTenantMappingController_getByClerkOrganization"];
         put?: never;
         post?: never;
         delete?: never;
@@ -467,6 +507,11 @@ export interface components {
         ExtractedFactResponseDto: {
             /** Format: uuid */
             id: string;
+            /**
+             * Format: uuid
+             * @description Tenant that owns this fact.
+             */
+            tenantId: string;
             /** Format: uuid */
             extractionRunId: string;
             /** Format: uuid */
@@ -482,12 +527,31 @@ export interface components {
             confidence: number;
             /** @enum {string} */
             reviewStatus: "unverified" | "verified" | "needs_evidence" | "conflict" | "rejected";
+            /**
+             * @description Backward-compatible camelCase criticality flag.
+             * @default false
+             */
+            isCritical: boolean;
+            /**
+             * @description Whether this fact is critical for memo review and conflict overrides.
+             * @default false
+             */
+            is_critical: boolean;
         };
         UpdateFactDto: {
             /** @description Normalized JSON value; plaintext is encrypted before database persistence. */
             normalizedValue?: string | number | boolean | Record<string, never> | unknown[] | null;
             /** @enum {string} */
             reviewStatus?: "unverified" | "verified" | "needs_evidence" | "conflict" | "rejected";
+            /**
+             * @description Marks whether this fact is critical for memo review and conflict overrides. Omitted updates preserve the current value.
+             * @default false
+             */
+            is_critical: boolean;
+        };
+        RequestMemoGenerationDto: {
+            /** @description Required when this case has unresolved critical facts with review_status=conflict. */
+            override_reason?: string;
         };
         MemoAcceptedResponseDto: {
             /** @enum {boolean} */
@@ -507,12 +571,16 @@ export interface components {
             caseId: string;
             versionNumber: number;
             /** @enum {string} */
-            status: "generating" | "draft" | "approved" | "failed";
+            status: "generating" | "draft" | "approved" | "rejected" | "failed";
             content: {
                 [key: string]: unknown;
             } | null;
             /** Format: date-time */
             approvedAt: Record<string, never> | null;
+            /** Format: date-time */
+            rejectedAt: Record<string, never> | null;
+            /** @description Decrypted rejection reason; only available to authorized tenant members. */
+            rejectionReason: string | null;
         };
         MemoVersionsResponseDto: {
             items: components["schemas"]["MemoVersionResponseDto"][];
@@ -520,6 +588,10 @@ export interface components {
         ApproveMemoDto: {
             /** @description Required when unresolved critical conflicts remain. */
             override_reason?: string;
+        };
+        RejectMemoDto: {
+            /** @description Reason for rejecting this draft. Stored encrypted and audited by hash. */
+            reason: string;
         };
         JobStatusResponseDto: {
             /** Format: uuid */
@@ -536,6 +608,14 @@ export interface components {
             attemptCount: number;
             /** Format: date-time */
             updatedAt: string;
+        };
+        TenantMappingResponseDto: {
+            /**
+             * Format: uuid
+             * @description Anvil tenant UUID mapped to the Clerk organization.
+             * @example 00000000-0000-4000-8000-000000000001
+             */
+            tenant_id: string;
         };
     };
     responses: never;
@@ -1995,7 +2075,7 @@ export interface operations {
             };
             cookie?: never;
         };
-        /** @description Optional normalized value and/or analyst review status. */
+        /** @description Optional normalized value, review status, and criticality flag. */
         requestBody: {
             content: {
                 "application/json": components["schemas"]["UpdateFactDto"];
@@ -2023,7 +2103,8 @@ export interface operations {
                      *       },
                      *       "sourcePage": 2,
                      *       "confidence": 0.95,
-                     *       "reviewStatus": "verified"
+                     *       "reviewStatus": "verified",
+                     *       "is_critical": true
                      *     }
                      */
                     "application/json": components["schemas"]["ExtractedFactResponseDto"];
@@ -2174,10 +2255,10 @@ export interface operations {
             };
             cookie?: never;
         };
-        /** @description No request body fields are required. */
-        requestBody: {
+        /** @description A reason is required only when unresolved critical facts are in conflict. */
+        requestBody?: {
             content: {
-                "application/json": Record<string, never>;
+                "application/json": components["schemas"]["RequestMemoGenerationDto"];
             };
         };
         responses: {
@@ -2366,7 +2447,9 @@ export interface operations {
                      *             "mitigants": [],
                      *             "recommendation": "undetermined"
                      *           },
-                     *           "approvedAt": "2026-10-30T00:10:00.000Z"
+                     *           "approvedAt": "2026-10-30T00:10:00.000Z",
+                     *           "rejectedAt": null,
+                     *           "rejectionReason": null
                      *         }
                      *       ]
                      *     }
@@ -2526,7 +2609,9 @@ export interface operations {
                      *         "mitigants": [],
                      *         "recommendation": "undetermined"
                      *       },
-                     *       "approvedAt": null
+                     *       "approvedAt": null,
+                     *       "rejectedAt": null,
+                     *       "rejectionReason": null
                      *     }
                      */
                     "application/json": components["schemas"]["MemoVersionResponseDto"];
@@ -2689,7 +2774,9 @@ export interface operations {
                      *         "mitigants": [],
                      *         "recommendation": "undetermined"
                      *       },
-                     *       "approvedAt": "2026-10-30T00:10:00.000Z"
+                     *       "approvedAt": "2026-10-30T00:10:00.000Z",
+                     *       "rejectedAt": null,
+                     *       "rejectionReason": null
                      *     }
                      */
                     "application/json": components["schemas"]["MemoVersionResponseDto"];
@@ -2760,6 +2847,171 @@ export interface operations {
                 };
             };
             /** @description Memo is not draft or unresolved critical conflicts require override_reason. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "statusCode": 409,
+                     *       "message": "The request conflicts with the current resource state.",
+                     *       "error": "Conflict"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ApiErrorResponseDto"];
+                };
+            };
+            /** @description Unprocessable Entity: The request is valid JSON but cannot be processed. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "statusCode": 422,
+                     *       "message": "The request is valid JSON but cannot be processed.",
+                     *       "error": "Unprocessable Entity"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ApiErrorResponseDto"];
+                };
+            };
+            /** @description Internal Server Error: An unexpected server error occurred. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "statusCode": 500,
+                     *       "message": "An unexpected server error occurred.",
+                     *       "error": "Internal Server Error"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ApiErrorResponseDto"];
+                };
+            };
+        };
+    };
+    MemosController_reject: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Tenant selector validated against active membership. */
+                "x-tenant-id": string;
+            };
+            path: {
+                /** @description Draft memo version identifier. */
+                memoId: string;
+            };
+            cookie?: never;
+        };
+        /** @description Required rejection reason, stored encrypted. */
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RejectMemoDto"];
+            };
+        };
+        responses: {
+            /** @description Memo rejected and audit event recorded. */
+            200: {
+                headers: {
+                    /** @description Response uses Cache-Control: no-store for the decrypted rejection reason. */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "id": "00000000-0000-4000-8000-000000000081",
+                     *       "tenantId": "00000000-0000-4000-8000-000000000001",
+                     *       "caseId": "00000000-0000-4000-8000-000000000021",
+                     *       "versionNumber": 1,
+                     *       "status": "rejected",
+                     *       "content": {
+                     *         "borrower_overview": "Evidence-based summary.",
+                     *         "request_summary": "Review requested.",
+                     *         "financial_highlights": [],
+                     *         "risks": [],
+                     *         "mitigants": [],
+                     *         "recommendation": "undetermined"
+                     *       },
+                     *       "approvedAt": null,
+                     *       "rejectedAt": "2026-10-30T00:10:00.000Z",
+                     *       "rejectionReason": "Updated cash flow evidence is required before this memo can proceed."
+                     *     }
+                     */
+                    "application/json": components["schemas"]["MemoVersionResponseDto"];
+                };
+            };
+            /** @description Rejection reason is missing, blank, or too long. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "statusCode": 400,
+                     *       "message": "Request validation failed.",
+                     *       "error": "Bad Request"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ApiErrorResponseDto"];
+                };
+            };
+            /** @description Unauthorized: Authentication is required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "statusCode": 401,
+                     *       "message": "Authentication is required.",
+                     *       "error": "Unauthorized"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ApiErrorResponseDto"];
+                };
+            };
+            /** @description Tenant membership or reviewer role is insufficient. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "statusCode": 403,
+                     *       "message": "The authenticated user is not authorized.",
+                     *       "error": "Forbidden"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ApiErrorResponseDto"];
+                };
+            };
+            /** @description Memo does not exist in the selected tenant. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "statusCode": 404,
+                     *       "message": "The requested resource was not found.",
+                     *       "error": "Not Found"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ApiErrorResponseDto"];
+                };
+            };
+            /** @description Only a draft memo can be rejected. */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -3046,6 +3298,146 @@ export interface operations {
                      *     }
                      */
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    ClerkTenantMappingController_getByClerkOrganization: {
+        parameters: {
+            query: {
+                /** @description Clerk organization ID in org_* format. */
+                org_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Tenant UUID mapped to the authenticated Clerk organization. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "tenant_id": "00000000-0000-4000-8000-000000000001"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["TenantMappingResponseDto"];
+                };
+            };
+            /** @description org_id is missing or invalid. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "statusCode": 400,
+                     *       "message": "Request validation failed.",
+                     *       "error": "Bad Request"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ApiErrorResponseDto"];
+                };
+            };
+            /** @description Supabase bearer token is missing or invalid. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "statusCode": 401,
+                     *       "message": "Authentication is required.",
+                     *       "error": "Unauthorized"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ApiErrorResponseDto"];
+                };
+            };
+            /** @description Forbidden: The authenticated user is not authorized. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "statusCode": 403,
+                     *       "message": "The authenticated user is not authorized.",
+                     *       "error": "Forbidden"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ApiErrorResponseDto"];
+                };
+            };
+            /** @description Organization tenant is not provisioned or the caller is not an active member. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "statusCode": 404,
+                     *       "message": "The requested resource was not found.",
+                     *       "error": "Not Found"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ApiErrorResponseDto"];
+                };
+            };
+            /** @description Conflict: The request conflicts with the current resource state. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "statusCode": 409,
+                     *       "message": "The request conflicts with the current resource state.",
+                     *       "error": "Conflict"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ApiErrorResponseDto"];
+                };
+            };
+            /** @description Unprocessable Entity: The request is valid JSON but cannot be processed. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "statusCode": 422,
+                     *       "message": "The request is valid JSON but cannot be processed.",
+                     *       "error": "Unprocessable Entity"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ApiErrorResponseDto"];
+                };
+            };
+            /** @description Internal Server Error: An unexpected server error occurred. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "statusCode": 500,
+                     *       "message": "An unexpected server error occurred.",
+                     *       "error": "Internal Server Error"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ApiErrorResponseDto"];
                 };
             };
         };

@@ -3166,6 +3166,153 @@
           "Health"
         ]
       }
+    },
+    "/v1/tenants/by-clerk-org": {
+      "get": {
+        "description": "Requires a Supabase bearer token whose Clerk identity has an active membership in the requested organization. Unprovisioned or inaccessible organizations return 404.",
+        "operationId": "ClerkTenantMappingController_getByClerkOrganization",
+        "parameters": [
+          {
+            "name": "org_id",
+            "required": true,
+            "in": "query",
+            "description": "Clerk organization ID in org_* format.",
+            "schema": {
+              "example": "org_2abc123xyz",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tenant UUID mapped to the authenticated Clerk organization.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantMappingResponseDto"
+                },
+                "example": {
+                  "tenant_id": "00000000-0000-4000-8000-000000000001"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "org_id is missing or invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 400,
+                  "message": "Request validation failed.",
+                  "error": "Bad Request"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Supabase bearer token is missing or invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 401,
+                  "message": "Authentication is required.",
+                  "error": "Unauthorized"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden: The authenticated user is not authorized.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 403,
+                  "message": "The authenticated user is not authorized.",
+                  "error": "Forbidden"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Organization tenant is not provisioned or the caller is not an active member.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 404,
+                  "message": "The requested resource was not found.",
+                  "error": "Not Found"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict: The request conflicts with the current resource state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 409,
+                  "message": "The request conflicts with the current resource state.",
+                  "error": "Conflict"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity: The request is valid JSON but cannot be processed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 422,
+                  "message": "The request is valid JSON but cannot be processed.",
+                  "error": "Unprocessable Entity"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error: An unexpected server error occurred.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 500,
+                  "message": "An unexpected server error occurred.",
+                  "error": "Internal Server Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Resolve the active Anvil tenant for a Clerk organization.",
+        "tags": [
+          "Tenants"
+        ]
+      }
     }
   },
   "info": {
@@ -3898,6 +4045,20 @@
           "error_code",
           "attemptCount",
           "updatedAt"
+        ]
+      },
+      "TenantMappingResponseDto": {
+        "type": "object",
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "description": "Anvil tenant UUID mapped to the Clerk organization.",
+            "format": "uuid",
+            "example": "00000000-0000-4000-8000-000000000001"
+          }
+        },
+        "required": [
+          "tenant_id"
         ]
       }
     }

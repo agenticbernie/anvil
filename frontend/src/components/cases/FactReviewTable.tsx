@@ -84,6 +84,11 @@ export function FactReviewTable({ caseId }: { caseId: CreditCase["id"] }) {
   }
 
   async function saveFact(factId: string) {
+    const currentFact = facts.find((fact) => fact.id === factId);
+    if (!currentFact) {
+      setFormError("This fact is no longer available. Refresh the page before editing it.");
+      return;
+    }
     let parsed: unknown;
     try {
       parsed = JSON.parse(normalizedText) as unknown;
@@ -101,6 +106,7 @@ export function FactReviewTable({ caseId }: { caseId: CreditCase["id"] }) {
     const body: UpdateFactRequest = {
       normalizedValue: parsed as UpdateFactRequest["normalizedValue"],
       reviewStatus: editStatus,
+      is_critical: currentFact.is_critical,
     };
     try {
       const fingerprint = await bodyFingerprint(factId, body);

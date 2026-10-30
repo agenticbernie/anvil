@@ -1,9 +1,10 @@
 "use client";
 
-import { useAuth } from "@clerk/nextjs";
-import { useQueryClient } from "@tanstack/react-query";
+import { useAuth, useOrganization } from "@clerk/nextjs";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { exchangeClerkTokenForSupabaseToken } from "@/lib/supabase/client";
+import { anvilApi, ApiError } from "@/lib/api/client";
 
 export interface ApiCredentials {
   readonly tenantId: string;
@@ -11,12 +12,13 @@ export interface ApiCredentials {
   readonly getAccessToken: () => Promise<string | null>;
 }
 
-export type TenantAuthStatus = "loading" | "signed-out" | "tenant-required" | "exchanging" | "ready" | "error";
+export type TenantAuthStatus = "loading" | "signed-out" | "tenant-required" | "mapping" | "exchanging" | "ready" | "error";
 
 interface AuthTenantContextValue {
   readonly credentials: ApiCredentials | null;
   readonly status: TenantAuthStatus;
   readonly message: string | null;
+  readonly tenantId: string | null;
 }
 
 interface CachedToken {
@@ -37,11 +39,14 @@ interface ExchangeState {
 }
 
 const AuthTenantContext = createContext<AuthTenantContextValue | null>(null);
-const TENANT_REQUIRED_MESSAGE = "Set a UUID tenant_id claim in Clerk or select an organization mapped to a tenant UUID.";
+const TENANT_REQUIRED_MESSAGE = "Select a Clerk organization to load its Anvil tenant.";
+const TENANT_PROVISIONING_MESSAGE = "This organization is still being provisioned. Refresh in a moment or contact your administrator.";
 const EXCHANGE_ERROR_MESSAGE = "Sign-in could not connect to Supabase. Check the custom OIDC provider settings.";
+const MAPPING_ERROR_MESSAGE = "The organization could not be connected to Anvil. Try again later.";
 
 export function AuthTenantProvider({ children }: { children: ReactNode }) {
   const { isLoaded, isSignedIn, userId, sessionId, sessionClaims, orgId, getToken } = useAuth();
+  const { isLoaded: organizationLoaded, organization } = useOrganization();
   const queryClient = useQueryClient();
   const [sessionRevision, setSessionRevision] = useState(0);
   const [exchangeState, setExchangeState] = useState<ExchangeState>({
@@ -56,14 +61,15 @@ export function AuthTenantProvider({ children }: { children: ReactNode }) {
   const getClerkToken = useRef(getToken);
   getClerkToken.current = getToken;
 
-  const tenantId = isLoaded && isSignedIn ? resolveTenantId(sessionClaims, orgId) : null;
+  const claimTenantId = isLoaded && isSignedIn ? resolveTenantId(sessionClaims, orgId) : null;
+  const organizationId = organizationLoaded ? organization?.id ?? orgId : null;
   const scope = isLoaded && isSignedIn
-    ? `${userId}:${sessionId}:${orgId ?? "personal"}:${tenantId ?? "missing-tenant"}`
+    ? `${userId}:${sessionId}:${organizationId ?? "personal"}:${claimTenantId ?? "mapped-tenant"}`
     : null;
   currentScope.current = scope;
 
   const getAccessToken = useCallback(async (): Promise<string | null> => {
-    if (!scope || !tenantId) return null;
+    if (!scope) return null;
 
     const cached = tokenCache.current;
     if (cached?.scope === scope && cached.expiresAt > Date.now() + 60_000) return cached.token;
@@ -90,14 +96,31 @@ export function AuthTenantProvider({ children }: { children: ReactNode }) {
     } finally {
       if (exchangeFlight.current?.promise === promise) exchangeFlight.current = null;
     }
-  }, [scope, tenantId]);
+  }, [scope]);
+
+  const tenantMappingQuery = useQuery({
+    queryKey: ["clerk-org-tenant", userId, sessionId, organizationId],
+    queryFn: async ({ signal }) => {
+      if (!organizationId) throw new Error("A Clerk organization must be selected.");
+      const token = await getAccessToken();
+      if (!token) throw new Error("Supabase access token is unavailable.");
+      return anvilApi.TenantsController_getByClerkOrg(token, organizationId, signal);
+    },
+    enabled: Boolean(isLoaded && organizationLoaded && isSignedIn && organizationId && !claimTenantId),
+    staleTime: 5 * 60_000,
+    gcTime: 10 * 60_000,
+    refetchOnWindowFocus: false,
+    retry: (failureCount, error) => !(error instanceof ApiError && error.status === 404) && failureCount < 1,
+  });
+
+  const tenantId = claimTenantId ?? tenantMappingQuery.data?.tenant_id ?? null;
 
   useEffect(() => {
-    if (!isLoaded) return;
+    if (!isLoaded || !organizationLoaded) return;
     let active = true;
 
     if (lastScope.current !== scope) {
-      queryClient.clear();
+      queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== "clerk-org-tenant" });
       tokenCache.current = null;
       lastScope.current = scope;
       setSessionRevision((revision) => revision + 1);
@@ -105,6 +128,26 @@ export function AuthTenantProvider({ children }: { children: ReactNode }) {
 
     if (!isSignedIn) {
       setExchangeState({ scope: null, status: "signed-out", message: null });
+      return () => { active = false; };
+    }
+
+    if (!claimTenantId && !organizationId) {
+      setExchangeState({ scope, status: "tenant-required", message: TENANT_REQUIRED_MESSAGE });
+      return () => { active = false; };
+    }
+
+    if (!claimTenantId && tenantMappingQuery.isPending) {
+      setExchangeState({ scope, status: "mapping", message: null });
+      return () => { active = false; };
+    }
+
+    if (!claimTenantId && tenantMappingQuery.isError) {
+      const notProvisioned = tenantMappingQuery.error instanceof ApiError && tenantMappingQuery.error.status === 404;
+      setExchangeState({
+        scope,
+        status: notProvisioned ? "tenant-required" : "error",
+        message: notProvisioned ? TENANT_PROVISIONING_MESSAGE : MAPPING_ERROR_MESSAGE,
+      });
       return () => { active = false; };
     }
 
@@ -125,21 +168,29 @@ export function AuthTenantProvider({ children }: { children: ReactNode }) {
       });
 
     return () => { active = false; };
-  }, [getAccessToken, isLoaded, isSignedIn, queryClient, scope, tenantId]);
+  }, [claimTenantId, getAccessToken, isLoaded, isSignedIn, organizationId, organizationLoaded, queryClient, scope, tenantId, tenantMappingQuery.error, tenantMappingQuery.isError, tenantMappingQuery.isPending]);
 
   const status: TenantAuthStatus = !isLoaded
     ? "loading"
+    : !organizationLoaded
+      ? "loading"
     : exchangeState.scope === scope
       ? exchangeState.status
       : !isSignedIn
         ? "signed-out"
-        : tenantId
+        : tenantMappingQuery.isPending && organizationId && !claimTenantId
+          ? "mapping"
+          : tenantId
           ? "exchanging"
           : "tenant-required";
   const message = status === "tenant-required"
-    ? TENANT_REQUIRED_MESSAGE
+    ? exchangeState.scope === scope && exchangeState.message
+      ? exchangeState.message
+      : TENANT_REQUIRED_MESSAGE
     : status === "error"
-      ? EXCHANGE_ERROR_MESSAGE
+      ? exchangeState.scope === scope && exchangeState.message
+        ? exchangeState.message
+        : EXCHANGE_ERROR_MESSAGE
       : null;
 
   const credentials = useMemo<ApiCredentials | null>(() => {
@@ -147,7 +198,7 @@ export function AuthTenantProvider({ children }: { children: ReactNode }) {
     return { tenantId, sessionRevision, getAccessToken };
   }, [getAccessToken, isLoaded, isSignedIn, sessionRevision, status, tenantId]);
 
-  const value = useMemo<AuthTenantContextValue>(() => ({ credentials, status, message }), [credentials, message, status]);
+  const value = useMemo<AuthTenantContextValue>(() => ({ credentials, status, message, tenantId }), [credentials, message, status, tenantId]);
   return <AuthTenantContext.Provider value={value}>{children}</AuthTenantContext.Provider>;
 }
 
@@ -155,6 +206,10 @@ export function useAuthTenant(): AuthTenantContextValue {
   const context = useContext(AuthTenantContext);
   if (!context) throw new Error("useAuthTenant must be used inside AuthTenantProvider");
   return context;
+}
+
+export function useTenantId(): string | null {
+  return useAuthTenant().tenantId;
 }
 
 function resolveTenantId(sessionClaims: unknown, organizationId: string | null): string | null {

@@ -24,6 +24,7 @@ export type UpdatedFact = paths["/v1/facts/{factId}"]["patch"]["responses"]["200
 export type ApproveMemoRequest = components["schemas"]["ApproveMemoDto"];
 export type ApprovedMemo = paths["/v1/memos/{memoId}/approve"]["post"]["responses"]["200"]["content"]["application/json"];
 export type ApiErrorBody = components["schemas"]["ApiErrorResponseDto"];
+export type TenantMapping = paths["/v1/tenants/by-clerk-org"]["get"]["responses"]["200"]["content"]["application/json"];
 
 export class ApiError extends Error {
   constructor(
@@ -95,6 +96,22 @@ function encodePathPart(value: string) {
 }
 
 export const anvilApi = {
+  async TenantsController_getByClerkOrg(accessToken: string, organizationId: string, signal?: AbortSignal): Promise<TenantMapping> {
+    const query = new URLSearchParams({ org_id: organizationId });
+    const response = await fetch(`${apiBaseUrl()}/v1/tenants/by-clerk-org?${query.toString()}`, {
+      method: "GET",
+      headers: { Accept: "application/json", Authorization: `Bearer ${accessToken}` },
+      signal,
+      cache: "no-store",
+    });
+    if (!response.ok) {
+      throw new ApiError(response.status, safeStatusMessages[response.status] ?? "The tenant could not be resolved.");
+    }
+    const result = await response.json() as TenantMapping;
+    if (!isUuid(result.tenant_id)) throw new ApiError(502, "The API returned an invalid tenant mapping.");
+    return result;
+  },
+
   CasesController_list(
     credentials: ApiCredentials,
     params: { limit?: number; cursor?: string },
@@ -208,3 +225,8 @@ export const anvilApi = {
     );
   },
 };
+
+function isUuid(value: unknown): value is string {
+  return typeof value === "string"
+    && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}

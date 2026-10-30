@@ -20,6 +20,8 @@ export function AccountMenu() {
           ? `Tenant ${credentials.tenantId}`
           : status === "exchanging"
             ? "Connecting account…"
+            : status === "mapping"
+              ? "Mapping organization…"
             : status === "tenant-required"
               ? "Tenant setup required"
               : status === "error"

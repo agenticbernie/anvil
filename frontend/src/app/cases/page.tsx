@@ -26,7 +26,7 @@ function formatDate(value: string) {
 }
 
 export default function CasesPage() {
-  const { credentials } = useAuthTenant();
+  const { credentials, status: authStatus, message: authMessage } = useAuthTenant();
   const toast = useToast();
   const [cursorStack, setCursorStack] = useState<Array<string | undefined>>([undefined]);
   const cursor = cursorStack[cursorStack.length - 1];
@@ -61,7 +61,7 @@ export default function CasesPage() {
         </div>
         <div className="flex items-center gap-3 text-sm text-slate-500">
           <span className="size-2 rounded-full bg-emerald-600" />
-          {credentials ? "Live tenant data" : "Connect an API session to begin"}
+          {credentials ? "Live tenant data" : ["loading", "mapping", "exchanging"].includes(authStatus) ? "Connecting organization" : "Tenant setup required"}
         </div>
       </section>
 
@@ -77,12 +77,21 @@ export default function CasesPage() {
           </div>
         </div>
 
-        {!credentials ? (
+        {!credentials && ["loading", "mapping", "exchanging"].includes(authStatus) ? (
+          <div className="grid min-h-64 place-items-center px-6 py-14 text-center" role="status" aria-live="polite">
+            <div>
+              <div className="mx-auto size-8 animate-spin rounded-full border-2 border-emerald-700 border-t-transparent" aria-hidden="true" />
+              <p className="mt-4 text-sm text-slate-600">
+                {authStatus === "mapping" ? "Connecting this organization to its tenant…" : "Preparing your workspace…"}
+              </p>
+            </div>
+          </div>
+        ) : !credentials ? (
           <div className="grid min-h-64 place-items-center px-6 py-14 text-center">
             <div className="max-w-md">
               <div className="mx-auto grid size-12 place-items-center rounded-2xl bg-emerald-50 text-lg font-semibold text-emerald-900">A</div>
-              <h3 className="mt-4 font-semibold text-slate-900">Connect your tenant</h3>
-              <p className="mt-2 text-sm leading-6 text-slate-500">Add a Supabase access token and tenant UUID in the header to load cases.</p>
+              <h3 className="mt-4 font-semibold text-slate-900">Tenant setup required</h3>
+              <p className="mt-2 text-sm leading-6 text-slate-500">{authMessage ?? "Select an organization that has been provisioned for Anvil."}</p>
             </div>
           </div>
         ) : query.isPending ? (
