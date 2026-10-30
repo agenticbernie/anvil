@@ -19,9 +19,9 @@ envVarGroups:
         value: "52428800"
       - key: LLM_REQUEST_TIMEOUT_MS
         value: "30000"
-      # Render ignores sync: false inside environment groups. Set the secret
-      # value for this key in the anvil-runtime group in the Render Dashboard.
+      # Render generates this once and retains the existing group value on later syncs.
       - key: PII_ENCRYPTION_KEY_BASE64
+        generateValue: true
       - key: PII_ENCRYPTION_KEY_VERSION
         value: v1
 
@@ -79,6 +79,8 @@ services:
         value: "true"
       - key: DATABASE_POOL_MAX
         value: "5"
+      - key: IDEMPOTENCY_HASH_KEY_BASE64
+        sync: false
       - key: SUPABASE_URL
         sync: false
       - key: UPSTASH_REDIS_URL
