@@ -45,7 +45,7 @@ import { PostgresIdempotencyRepository } from './infrastructure/postgres-idempot
       useFactory: (service: IdempotencyService) => new IdempotencyInterceptor(service),
     },
   ],
-  exports: [IdempotencyInterceptor],
+  exports: [IdempotencyInterceptor, IdempotencyService],
 })
 export class IdempotencyModule {}
 
