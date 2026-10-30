@@ -8,6 +8,7 @@ import { AuditModule } from '../audit/audit.module.js';
 import { AUDIT_EVENT_REPOSITORY } from '../audit/audit.tokens.js';
 import type { AuditEventRepository } from '../audit/audit.types.js';
 import { AuthModule } from '../auth/auth.module.js';
+import { IdempotencyModule } from '../idempotency/idempotency.module.js';
 import { CasesModule } from '../cases/cases.module.js';
 import { CASE_REPOSITORY } from '../cases/cases.tokens.js';
 import type { CaseRepository } from '../cases/application/case.types.js';
@@ -27,7 +28,7 @@ import { OpenAiMemoProvider } from './infrastructure/openai-memo.provider.js';
 import { PostgresMemoRepository } from './infrastructure/postgres-memo.repository.js';
 
 @Module({
-  imports: [DatabaseModule, AuthModule, AuditModule, CasesModule, DocumentsModule, ExtractionModule],
+  imports: [DatabaseModule, AuthModule, AuditModule, CasesModule, DocumentsModule, ExtractionModule, IdempotencyModule],
   controllers: [MemosController],
   providers: [
     { provide: MEMO_CONTENT_CIPHER, useExisting: TenantJsonEncryptionService },

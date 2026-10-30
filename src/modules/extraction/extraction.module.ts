@@ -7,6 +7,7 @@ import { AuditModule } from '../audit/audit.module.js';
 import { AUDIT_EVENT_REPOSITORY } from '../audit/audit.tokens.js';
 import type { AuditEventRepository } from '../audit/audit.types.js';
 import { AuthModule } from '../auth/auth.module.js';
+import { IdempotencyModule } from '../idempotency/idempotency.module.js';
 import { DatabaseModule } from '../../infrastructure/database/database.module.js';
 import { DocumentsModule } from '../documents/documents.module.js';
 import { DOCUMENT_TEXT_CIPHER, OUTBOX_REPOSITORY } from '../documents/documents.tokens.js';
@@ -21,7 +22,7 @@ import type { LlmExtractionProvider } from './application/extraction.types.js';
 import { FactsController } from './api/facts.controller.js';
 
 @Module({
-  imports: [DatabaseModule, DocumentsModule, AuditModule, AuthModule],
+  imports: [DatabaseModule, DocumentsModule, AuditModule, AuthModule, IdempotencyModule],
   controllers: [FactsController],
   providers: [
     TenantJsonEncryptionService,
