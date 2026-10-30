@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { Pool } from 'pg';
 import { PG_POOL, UNIT_OF_WORK } from './postgres.tokens.js';
 import { PostgresUnitOfWork } from './postgres-unit-of-work.js';
+import { createDatabaseSslOptions } from './database-ssl-options.js';
 
 @Global()
 @Module({
@@ -14,7 +15,10 @@ import { PostgresUnitOfWork } from './postgres-unit-of-work.js';
       useFactory: (config: ConfigService) => new Pool({
         connectionString: config.get<string>('database.url') || undefined,
         max: config.get<number>('database.poolMax', 5),
-        ssl: config.get<boolean>('database.ssl', true) ? { rejectUnauthorized: true } : false,
+        ssl: createDatabaseSslOptions(
+          config.get<boolean>('database.ssl', true),
+          config.get<string>('database.url'),
+        ),
         application_name: 'anvil-api',
       }),
     },
