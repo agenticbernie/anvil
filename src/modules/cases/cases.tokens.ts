@@ -1,0 +1,2 @@
+export const CASE_REPOSITORY = Symbol('CASE_REPOSITORY');
+export const CASE_NUMBER_GENERATOR = Symbol('CASE_NUMBER_GENERATOR');

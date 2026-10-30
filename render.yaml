@@ -1,0 +1,100 @@
+envVarGroups:
+  - name: anvil-runtime
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: LOG_LEVEL
+        value: info
+      - key: API_PREFIX
+        value: v1
+      - key: SWAGGER_ENABLED
+        value: "true"
+      - key: REQUEST_ID_HEADER
+        value: x-request-id
+      - key: LLM_PROVIDER
+        value: openai
+      - key: WORKER_CONCURRENCY
+        value: "1"
+      - key: MAX_UPLOAD_BYTES
+        value: "52428800"
+      - key: LLM_REQUEST_TIMEOUT_MS
+        value: "30000"
+      - key: PII_ENCRYPTION_KEY_BASE64
+        sync: false
+      - key: PII_ENCRYPTION_KEY_VERSION
+        value: v1
+
+services:
+  - type: web
+    name: anvil-web
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start:web
+    healthCheckPath: /health/ready
+    envVars:
+      - fromGroup: anvil-runtime
+      - key: CORS_ORIGINS
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: DATABASE_SSL
+        value: "true"
+      - key: DATABASE_POOL_MAX
+        value: "5"
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_JWKS_URL
+        sync: false
+      - key: R2_ENDPOINT
+        sync: false
+      - key: R2_BUCKET_NAME
+        sync: false
+      - key: R2_REGION
+        value: auto
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: IDEMPOTENCY_HASH_KEY_BASE64
+        sync: false
+      - key: IDEMPOTENCY_HASH_KEY_PREVIOUS_BASE64
+        sync: false
+
+  - type: worker
+    name: anvil-worker
+    runtime: node
+    plan: 0.5c-512mb
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start:worker
+    maxShutdownDelaySeconds: 120
+    envVars:
+      - fromGroup: anvil-runtime
+      - key: DATABASE_URL
+        sync: false
+      - key: DATABASE_SSL
+        value: "true"
+      - key: DATABASE_POOL_MAX
+        value: "5"
+      - key: SUPABASE_URL
+        sync: false
+      - key: UPSTASH_REDIS_URL
+        sync: false
+      - key: UPSTASH_REDIS_TOKEN
+        sync: false
+      - key: R2_ENDPOINT
+        sync: false
+      - key: R2_BUCKET_NAME
+        sync: false
+      - key: R2_REGION
+        value: auto
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: LLM_API_KEY
+        sync: false
+      - key: LLM_MODEL
+        sync: false

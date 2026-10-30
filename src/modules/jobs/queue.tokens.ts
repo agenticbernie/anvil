@@ -1,0 +1,11 @@
+export const BULLMQ_CONNECTION = Symbol('BULLMQ_CONNECTION');
+export const DOCUMENT_PARSE_QUEUE = Symbol('DOCUMENT_PARSE_QUEUE');
+export const DOCUMENT_PARSE_DLQ_QUEUE = Symbol('DOCUMENT_PARSE_DLQ_QUEUE');
+export const DOCUMENT_EXTRACT_QUEUE = Symbol('DOCUMENT_EXTRACT_QUEUE');
+export const MEMO_GENERATE_QUEUE = Symbol('MEMO_GENERATE_QUEUE');
+export const NEEDS_MANUAL_REVIEW_QUEUE = Symbol('NEEDS_MANUAL_REVIEW_QUEUE');
+export const DOCUMENT_PARSE_QUEUE_NAME = 'document.parse';
+export const DOCUMENT_PARSE_DLQ_QUEUE_NAME = 'document.parse.dlq';
+export const DOCUMENT_EXTRACT_QUEUE_NAME = 'document.extract';
+export const MEMO_GENERATE_QUEUE_NAME = 'memo.generate';
+export const NEEDS_MANUAL_REVIEW_QUEUE_NAME = 'needs_manual_review';

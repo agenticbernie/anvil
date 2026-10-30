@@ -1,0 +1,3905 @@
+{
+  "openapi": "3.0.0",
+  "paths": {
+    "/v1/cases": {
+      "post": {
+        "description": "Creates a tenant-scoped draft and records an audit event. Replays with the same idempotency key return the original response.",
+        "operationId": "CasesController_create",
+        "parameters": [
+          {
+            "name": "x-tenant-id",
+            "in": "header",
+            "description": "Tenant selector. The authenticated user must have active membership.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "00000000-0000-4000-8000-000000000001"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Stable client-generated key for request replay protection.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "phase5-case-create-0001"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "Entity and currency for the new draft case.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCaseDto"
+              },
+              "examples": {
+                "draft": {
+                  "summary": "Create a USD credit case",
+                  "value": {
+                    "entityId": "00000000-0000-4000-8000-000000000031",
+                    "currency": "USD"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Draft case created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreditCaseResponseDto"
+                },
+                "example": {
+                  "id": "00000000-0000-4000-8000-000000000041",
+                  "tenantId": "00000000-0000-4000-8000-000000000001",
+                  "entityId": "00000000-0000-4000-8000-000000000031",
+                  "caseNumber": "ANV-2026-000001",
+                  "status": "draft",
+                  "currency": "USD",
+                  "version": 1,
+                  "createdAt": "2026-10-30T00:00:00.000Z",
+                  "updatedAt": "2026-10-30T00:00:00.000Z",
+                  "deletedAt": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request body, currency, or idempotency key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 400,
+                  "message": "Request validation failed.",
+                  "error": "Bad Request"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized: Authentication is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 401,
+                  "message": "Authentication is required.",
+                  "error": "Unauthorized"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden: The authenticated user is not authorized.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 403,
+                  "message": "The authenticated user is not authorized.",
+                  "error": "Forbidden"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found: The requested resource was not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 404,
+                  "message": "The requested resource was not found.",
+                  "error": "Not Found"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Idempotency key conflicts or the tenant lifetime case limit has been reached.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 409,
+                  "message": "The request conflicts with the current resource state.",
+                  "error": "Conflict"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity: The request is valid JSON but cannot be processed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 422,
+                  "message": "The request is valid JSON but cannot be processed.",
+                  "error": "Unprocessable Entity"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Case creation hourly request budget is exhausted.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "statusCode": 429,
+                  "message": "Case creation hourly request budget is exhausted.",
+                  "error": "Too Many Requests"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error: An unexpected server error occurred.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 500,
+                  "message": "An unexpected server error occurred.",
+                  "error": "Internal Server Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Create a draft credit case.",
+        "tags": [
+          "Credit Cases"
+        ]
+      },
+      "get": {
+        "description": "Returns only cases visible in the selected tenant. The cursor is opaque and can be reused to fetch the next page.",
+        "operationId": "CasesController_list",
+        "parameters": [
+          {
+            "name": "x-tenant-id",
+            "in": "header",
+            "description": "Tenant selector. The authenticated user must have active membership.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "00000000-0000-4000-8000-000000000001"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "Maximum number of cases to return.",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "number"
+            }
+          },
+          {
+            "name": "cursor",
+            "required": false,
+            "in": "query",
+            "description": "Opaque cursor from a previous page response.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tenant case page.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CasePageResponseDto"
+                },
+                "example": {
+                  "items": [],
+                  "nextCursor": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid cursor or page size.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 400,
+                  "message": "Request validation failed.",
+                  "error": "Bad Request"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized: Authentication is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 401,
+                  "message": "Authentication is required.",
+                  "error": "Unauthorized"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "No active tenant membership.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 403,
+                  "message": "The authenticated user is not authorized.",
+                  "error": "Forbidden"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found: The requested resource was not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 404,
+                  "message": "The requested resource was not found.",
+                  "error": "Not Found"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict: The request conflicts with the current resource state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 409,
+                  "message": "The request conflicts with the current resource state.",
+                  "error": "Conflict"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity: The request is valid JSON but cannot be processed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 422,
+                  "message": "The request is valid JSON but cannot be processed.",
+                  "error": "Unprocessable Entity"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error: An unexpected server error occurred.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 500,
+                  "message": "An unexpected server error occurred.",
+                  "error": "Internal Server Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List tenant credit cases using cursor pagination.",
+        "tags": [
+          "Credit Cases"
+        ]
+      }
+    },
+    "/v1/cases/{id}": {
+      "get": {
+        "description": "Returns a single case only when it belongs to the active tenant.",
+        "operationId": "CasesController_findOne",
+        "parameters": [
+          {
+            "name": "x-tenant-id",
+            "in": "header",
+            "description": "Tenant selector. The authenticated user must have active membership.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "00000000-0000-4000-8000-000000000001"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Credit case identifier.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tenant-scoped credit case.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreditCaseResponseDto"
+                },
+                "example": {
+                  "id": "00000000-0000-4000-8000-000000000041",
+                  "tenantId": "00000000-0000-4000-8000-000000000001",
+                  "entityId": "00000000-0000-4000-8000-000000000031",
+                  "caseNumber": "ANV-2026-000001",
+                  "status": "draft",
+                  "currency": "USD",
+                  "version": 1,
+                  "createdAt": "2026-10-30T00:00:00.000Z",
+                  "updatedAt": "2026-10-30T00:00:00.000Z",
+                  "deletedAt": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid case ID.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 400,
+                  "message": "Request validation failed.",
+                  "error": "Bad Request"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized: Authentication is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 401,
+                  "message": "Authentication is required.",
+                  "error": "Unauthorized"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "No active tenant membership.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 403,
+                  "message": "The authenticated user is not authorized.",
+                  "error": "Forbidden"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Credit case not found in this tenant.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 404,
+                  "message": "The requested resource was not found.",
+                  "error": "Not Found"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict: The request conflicts with the current resource state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 409,
+                  "message": "The request conflicts with the current resource state.",
+                  "error": "Conflict"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity: The request is valid JSON but cannot be processed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 422,
+                  "message": "The request is valid JSON but cannot be processed.",
+                  "error": "Unprocessable Entity"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error: An unexpected server error occurred.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 500,
+                  "message": "An unexpected server error occurred.",
+                  "error": "Internal Server Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get one credit case by ID.",
+        "tags": [
+          "Credit Cases"
+        ]
+      },
+      "patch": {
+        "description": "Applies a valid workflow transition using optimistic version checking and writes an audit event.",
+        "operationId": "CasesController_update",
+        "parameters": [
+          {
+            "name": "x-tenant-id",
+            "in": "header",
+            "description": "Tenant selector. The authenticated user must have active membership.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "00000000-0000-4000-8000-000000000001"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Credit case identifier.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Stable client-generated key for request replay protection.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "phase5-case-update-0001"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "Target workflow state and current case version.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCaseDto"
+              },
+              "examples": {
+                "transition": {
+                  "summary": "Move case into review",
+                  "value": {
+                    "status": "in_review",
+                    "version": 1
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Case workflow status updated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreditCaseResponseDto"
+                },
+                "example": {
+                  "id": "00000000-0000-4000-8000-000000000041",
+                  "tenantId": "00000000-0000-4000-8000-000000000001",
+                  "entityId": "00000000-0000-4000-8000-000000000031",
+                  "caseNumber": "ANV-2026-000001",
+                  "status": "in_review",
+                  "currency": "USD",
+                  "version": 2,
+                  "createdAt": "2026-10-30T00:00:00.000Z",
+                  "updatedAt": "2026-10-30T00:05:00.000Z",
+                  "deletedAt": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid status transition or request body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 400,
+                  "message": "Request validation failed.",
+                  "error": "Bad Request"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized: Authentication is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 401,
+                  "message": "Authentication is required.",
+                  "error": "Unauthorized"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Tenant role is insufficient.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 403,
+                  "message": "The authenticated user is not authorized.",
+                  "error": "Forbidden"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Credit case not found in this tenant.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 404,
+                  "message": "The requested resource was not found.",
+                  "error": "Not Found"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Case version is stale or idempotency key conflicts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 409,
+                  "message": "The request conflicts with the current resource state.",
+                  "error": "Conflict"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity: The request is valid JSON but cannot be processed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 422,
+                  "message": "The request is valid JSON but cannot be processed.",
+                  "error": "Unprocessable Entity"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error: An unexpected server error occurred.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 500,
+                  "message": "An unexpected server error occurred.",
+                  "error": "Internal Server Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Move a credit case to the next allowed workflow status.",
+        "tags": [
+          "Credit Cases"
+        ]
+      }
+    },
+    "/v1/cases/{id}/archive": {
+      "post": {
+        "description": "Archives a case with optimistic version checking and records an audit event.",
+        "operationId": "CasesController_archive",
+        "parameters": [
+          {
+            "name": "x-tenant-id",
+            "in": "header",
+            "description": "Tenant selector. The authenticated user must have active membership.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "00000000-0000-4000-8000-000000000001"
+            }
+          },
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "Credit case identifier.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Stable client-generated key for request replay protection.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "phase5-case-archive-0001"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "Current case version used for optimistic concurrency.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ArchiveCaseDto"
+              },
+              "examples": {
+                "archive": {
+                  "summary": "Archive the current case version",
+                  "value": {
+                    "version": 2
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Case archived.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreditCaseResponseDto"
+                },
+                "example": {
+                  "id": "00000000-0000-4000-8000-000000000041",
+                  "tenantId": "00000000-0000-4000-8000-000000000001",
+                  "entityId": "00000000-0000-4000-8000-000000000031",
+                  "caseNumber": "ANV-2026-000001",
+                  "status": "in_review",
+                  "currency": "USD",
+                  "version": 3,
+                  "createdAt": "2026-10-30T00:00:00.000Z",
+                  "updatedAt": "2026-10-30T00:10:00.000Z",
+                  "deletedAt": "2026-10-30T00:10:00.000Z"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request body or case ID.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 400,
+                  "message": "Request validation failed.",
+                  "error": "Bad Request"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized: Authentication is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 401,
+                  "message": "Authentication is required.",
+                  "error": "Unauthorized"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Tenant role is insufficient.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 403,
+                  "message": "The authenticated user is not authorized.",
+                  "error": "Forbidden"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Credit case not found in this tenant.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 404,
+                  "message": "The requested resource was not found.",
+                  "error": "Not Found"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Case version is stale or idempotency key conflicts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 409,
+                  "message": "The request conflicts with the current resource state.",
+                  "error": "Conflict"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity: The request is valid JSON but cannot be processed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 422,
+                  "message": "The request is valid JSON but cannot be processed.",
+                  "error": "Unprocessable Entity"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error: An unexpected server error occurred.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 500,
+                  "message": "An unexpected server error occurred.",
+                  "error": "Internal Server Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Soft-delete a credit case.",
+        "tags": [
+          "Credit Cases"
+        ]
+      }
+    },
+    "/v1/cases/{caseId}/documents": {
+      "get": {
+        "description": "Returns safe document metadata for the selected tenant and case. Storage keys, hashes, encryption material, and upload credentials are never included.",
+        "operationId": "CaseDocumentsController_listForCase",
+        "parameters": [
+          {
+            "name": "x-tenant-id",
+            "in": "header",
+            "description": "Tenant selector validated against active membership.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "00000000-0000-4000-8000-000000000001"
+            }
+          },
+          {
+            "name": "caseId",
+            "required": true,
+            "in": "path",
+            "description": "Credit case whose documents should be listed.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tenant-scoped document list.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Response uses Cache-Control: no-store.",
+                "schema": {
+                  "type": "string",
+                  "example": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentListResponseDto"
+                },
+                "example": {
+                  "items": [
+                    {
+                      "id": "00000000-0000-4000-8000-000000000041",
+                      "caseId": "00000000-0000-4000-8000-000000000021",
+                      "contentType": "application/pdf",
+                      "sizeBytes": 1048576,
+                      "status": "processed",
+                      "createdAt": "2026-10-30T00:00:00.000Z",
+                      "updatedAt": "2026-10-30T00:05:00.000Z"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Case identifier is not a UUID.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 400,
+                  "message": "Request validation failed.",
+                  "error": "Bad Request"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized: Authentication is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 401,
+                  "message": "Authentication is required.",
+                  "error": "Unauthorized"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Active tenant membership and a read role are required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 403,
+                  "message": "The authenticated user is not authorized.",
+                  "error": "Forbidden"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Case does not exist in the selected tenant.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 404,
+                  "message": "The requested resource was not found.",
+                  "error": "Not Found"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict: The request conflicts with the current resource state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 409,
+                  "message": "The request conflicts with the current resource state.",
+                  "error": "Conflict"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity: The request is valid JSON but cannot be processed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 422,
+                  "message": "The request is valid JSON but cannot be processed.",
+                  "error": "Unprocessable Entity"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error: An unexpected server error occurred.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 500,
+                  "message": "An unexpected server error occurred.",
+                  "error": "Internal Server Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List documents belonging to a credit case.",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
+    "/v1/cases/{caseId}/documents/presign": {
+      "post": {
+        "description": "Reserves a tenant-scoped encrypted upload and returns the one-time data key to the authenticated uploader. The key is never logged or stored in plaintext.",
+        "operationId": "CaseDocumentsController_presign",
+        "parameters": [
+          {
+            "name": "x-tenant-id",
+            "in": "header",
+            "description": "Tenant selector validated against active membership.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "00000000-0000-4000-8000-000000000001"
+            }
+          },
+          {
+            "name": "caseId",
+            "required": true,
+            "in": "path",
+            "description": "Credit case that will own the uploaded document.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "File metadata used to reserve the encrypted upload.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PresignDocumentDto"
+              },
+              "examples": {
+                "pdf": {
+                  "summary": "Reserve a PDF upload",
+                  "value": {
+                    "contentType": "application/pdf",
+                    "sizeBytes": 1048576,
+                    "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Upload reservation and direct upload URL created. The one-time encryption key response must not be cached.",
+            "headers": {
+              "Cache-Control": {
+                "description": "The no-store policy prevents caches from retaining the one-time encryption key and signed upload URL.",
+                "schema": {
+                  "type": "string",
+                  "example": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PresignedDocumentResponseDto"
+                },
+                "example": {
+                  "documentId": "00000000-0000-4000-8000-000000000041",
+                  "uploadUrl": "https://example.invalid/signed-upload",
+                  "requiredHeaders": {
+                    "content-length": "1048592",
+                    "content-type": "application/pdf",
+                    "x-amz-meta-sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                  },
+                  "expiresAt": "2026-10-30T00:15:00.000Z",
+                  "encryption": {
+                    "algorithm": "AES-256-GCM",
+                    "keyBase64": "<one-time-key-returned-to-uploader>",
+                    "nonceBase64": "<12-byte-nonce>",
+                    "additionalDataBase64": "<authenticated-metadata>",
+                    "tagLengthBits": 128,
+                    "ciphertextFormat": "ciphertext+tag"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid file type, declared size, digest, or case ID.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 400,
+                  "message": "Request validation failed.",
+                  "error": "Bad Request"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized: Authentication is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 401,
+                  "message": "Authentication is required.",
+                  "error": "Unauthorized"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Active tenant membership and upload role are required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 403,
+                  "message": "The authenticated user is not authorized.",
+                  "error": "Forbidden"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Case not found in the active tenant.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 404,
+                  "message": "The requested resource was not found.",
+                  "error": "Not Found"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The tenant lifetime limit of 1,000 document reservations or 10 GiB of declared ciphertext has been reached.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 409,
+                  "message": "The request conflicts with the current resource state.",
+                  "error": "Conflict"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity: The request is valid JSON but cannot be processed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 422,
+                  "message": "The request is valid JSON but cannot be processed.",
+                  "error": "Unprocessable Entity"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "The active reservation or hourly upload budget is exhausted.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "statusCode": 429,
+                  "message": "Document upload reservation rate limit exceeded.",
+                  "error": "Too Many Requests"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error: An unexpected server error occurred.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 500,
+                  "message": "An unexpected server error occurred.",
+                  "error": "Internal Server Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Create a short lived direct upload URL for a case document.",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
+    "/v1/documents/{documentId}/confirm-upload": {
+      "post": {
+        "description": "Verifies the uploaded object digest and commits processing work with its outbox event. Parsing runs asynchronously after this endpoint returns.",
+        "operationId": "DocumentsController_confirmUpload",
+        "parameters": [
+          {
+            "name": "x-tenant-id",
+            "in": "header",
+            "description": "Tenant selector validated against active membership.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "00000000-0000-4000-8000-000000000001"
+            }
+          },
+          {
+            "name": "documentId",
+            "required": true,
+            "in": "path",
+            "description": "Document reservation identifier.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "Digest declared for the uploaded object.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmUploadDto"
+              },
+              "examples": {
+                "confirm": {
+                  "summary": "Confirm the uploaded object digest",
+                  "value": {
+                    "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted; parsing runs asynchronously.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentAcceptedResponseDto"
+                },
+                "example": {
+                  "job_id": "00000000-0000-4000-8000-000000000061",
+                  "status": "queued"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid digest or document identifier.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 400,
+                  "message": "Request validation failed.",
+                  "error": "Bad Request"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized: Authentication is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 401,
+                  "message": "Authentication is required.",
+                  "error": "Unauthorized"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Active tenant membership and upload role are required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 403,
+                  "message": "The authenticated user is not authorized.",
+                  "error": "Forbidden"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Document not found in the active tenant.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 404,
+                  "message": "The requested resource was not found.",
+                  "error": "Not Found"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The object digest or upload state conflicts with the reservation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 409,
+                  "message": "The request conflicts with the current resource state.",
+                  "error": "Conflict"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity: The request is valid JSON but cannot be processed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 422,
+                  "message": "The request is valid JSON but cannot be processed.",
+                  "error": "Unprocessable Entity"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error: An unexpected server error occurred.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 500,
+                  "message": "An unexpected server error occurred.",
+                  "error": "Internal Server Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Confirm an uploaded document and enqueue asynchronous parsing.",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
+    "/v1/cases/{caseId}/facts": {
+      "get": {
+        "description": "Returns tenant-scoped facts with extraction provenance. The optional review_status filter narrows the result without changing stored facts.",
+        "operationId": "FactsController_listForCase",
+        "parameters": [
+          {
+            "name": "x-tenant-id",
+            "in": "header",
+            "description": "Tenant selector validated against active membership.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "00000000-0000-4000-8000-000000000001"
+            }
+          },
+          {
+            "name": "caseId",
+            "required": true,
+            "in": "path",
+            "description": "Credit case whose facts should be listed.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "review_status",
+            "required": false,
+            "in": "query",
+            "description": "Optional review status filter.",
+            "schema": {
+              "enum": [
+                "unverified",
+                "verified",
+                "needs_evidence",
+                "conflict",
+                "rejected"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tenant-scoped extracted fact list.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Response uses Cache-Control: no-store for decrypted fact values.",
+                "schema": {
+                  "type": "string",
+                  "example": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ExtractedFactResponseDto"
+                  }
+                },
+                "example": [
+                  {
+                    "id": "00000000-0000-4000-8000-000000000071",
+                    "extractionRunId": "00000000-0000-4000-8000-000000000051",
+                    "caseId": "00000000-0000-4000-8000-000000000021",
+                    "fieldName": "annual_revenue",
+                    "rawValue": "USD 50,000",
+                    "normalizedValue": {
+                      "amount": 50000,
+                      "currency": "USD"
+                    },
+                    "sourcePage": 2,
+                    "confidence": 0.95,
+                    "reviewStatus": "unverified"
+                  }
+                ]
+              }
+            }
+          },
+          "400": {
+            "description": "Case identifier or review_status is invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 400,
+                  "message": "Request validation failed.",
+                  "error": "Bad Request"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized: Authentication is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 401,
+                  "message": "Authentication is required.",
+                  "error": "Unauthorized"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Active tenant membership and a read role are required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 403,
+                  "message": "The authenticated user is not authorized.",
+                  "error": "Forbidden"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Case does not exist in the selected tenant.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 404,
+                  "message": "The requested resource was not found.",
+                  "error": "Not Found"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict: The request conflicts with the current resource state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 409,
+                  "message": "The request conflicts with the current resource state.",
+                  "error": "Conflict"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity: The request is valid JSON but cannot be processed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 422,
+                  "message": "The request is valid JSON but cannot be processed.",
+                  "error": "Unprocessable Entity"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error: An unexpected server error occurred.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 500,
+                  "message": "An unexpected server error occurred.",
+                  "error": "Internal Server Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List extracted facts for a credit case.",
+        "tags": [
+          "Fact Review"
+        ]
+      }
+    },
+    "/v1/facts/{factId}": {
+      "patch": {
+        "description": "Updates the analyst-reviewed value or review status, encrypts sensitive values before persistence, and writes a before/after audit event.",
+        "operationId": "FactsController_update",
+        "parameters": [
+          {
+            "name": "x-tenant-id",
+            "in": "header",
+            "description": "Tenant selector validated against active membership.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "00000000-0000-4000-8000-000000000001"
+            }
+          },
+          {
+            "name": "factId",
+            "required": true,
+            "in": "path",
+            "description": "Extracted fact identifier.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Stable key for safely retrying the same fact update.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "phase5-fact-update-0001"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "Optional normalized value, review status, and criticality flag.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateFactDto"
+              },
+              "examples": {
+                "verification": {
+                  "summary": "Verify a critical revenue fact",
+                  "value": {
+                    "normalizedValue": {
+                      "amount": 50000,
+                      "currency": "USD"
+                    },
+                    "reviewStatus": "verified",
+                    "is_critical": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Fact updated with source provenance retained.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Response uses Cache-Control: no-store for decrypted fact data.",
+                "schema": {
+                  "type": "string",
+                  "example": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtractedFactResponseDto"
+                },
+                "example": {
+                  "id": "00000000-0000-4000-8000-000000000071",
+                  "extractionRunId": "00000000-0000-4000-8000-000000000051",
+                  "caseId": "00000000-0000-4000-8000-000000000021",
+                  "fieldName": "annual_revenue",
+                  "rawValue": "USD 50,000",
+                  "normalizedValue": {
+                    "amount": 50000,
+                    "currency": "USD"
+                  },
+                  "sourcePage": 2,
+                  "confidence": 0.95,
+                  "reviewStatus": "verified",
+                  "is_critical": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid JSON fact value or empty patch.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 400,
+                  "message": "Request validation failed.",
+                  "error": "Bad Request"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized: Authentication is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 401,
+                  "message": "Authentication is required.",
+                  "error": "Unauthorized"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Tenant membership or review role is insufficient.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 403,
+                  "message": "The authenticated user is not authorized.",
+                  "error": "Forbidden"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Fact does not exist in the selected tenant.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 404,
+                  "message": "The requested resource was not found.",
+                  "error": "Not Found"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Idempotency collision, concurrent state conflict, or tenant lifetime fact review update cap reached.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 409,
+                  "message": "The request conflicts with the current resource state.",
+                  "error": "Conflict"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity: The request is valid JSON but cannot be processed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 422,
+                  "message": "The request is valid JSON but cannot be processed.",
+                  "error": "Unprocessable Entity"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Fact review update hourly budget is exhausted.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "statusCode": 429,
+                  "message": "Fact review update hourly budget is exhausted.",
+                  "error": "Too Many Requests"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error: An unexpected server error occurred.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 500,
+                  "message": "An unexpected server error occurred.",
+                  "error": "Internal Server Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Correct or verify an extracted fact while preserving its source provenance.",
+        "tags": [
+          "Fact Review"
+        ]
+      }
+    },
+    "/v1/cases/{caseId}/memos/generate": {
+      "post": {
+        "description": "Persists an outbox request and returns immediately; memo generation runs asynchronously.",
+        "operationId": "MemosController_requestGeneration",
+        "parameters": [
+          {
+            "name": "x-tenant-id",
+            "in": "header",
+            "description": "Tenant selector validated against active membership.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "00000000-0000-4000-8000-000000000001"
+            }
+          },
+          {
+            "name": "caseId",
+            "required": true,
+            "in": "path",
+            "description": "Credit case used as the memo evidence scope.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Stable key for safely retrying the generation request.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "phase5-memo-generate-0001"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "description": "A reason is required only when unresolved critical facts are in conflict.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestMemoGenerationDto"
+              },
+              "examples": {
+                "noConflicts": {
+                  "summary": "Queue generation without conflicts",
+                  "value": {}
+                },
+                "criticalConflict": {
+                  "summary": "Document the critical conflict override",
+                  "value": {
+                    "override_reason": "Conflicting financial evidence was reviewed for this draft."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Memo generation accepted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoAcceptedResponseDto"
+                },
+                "example": {
+                  "accepted": true,
+                  "jobId": "00000000-0000-4000-8000-000000000061"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid case ID.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 400,
+                  "message": "Request validation failed.",
+                  "error": "Bad Request"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized: Authentication is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 401,
+                  "message": "Authentication is required.",
+                  "error": "Unauthorized"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Tenant membership or analyst role is insufficient.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 403,
+                  "message": "The authenticated user is not authorized.",
+                  "error": "Forbidden"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Credit case not found in this tenant.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 404,
+                  "message": "The requested resource was not found.",
+                  "error": "Not Found"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The tenant lifetime limit of 100,000 memo generation requests has been reached.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 409,
+                  "message": "The request conflicts with the current resource state.",
+                  "error": "Conflict"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity: The request is valid JSON but cannot be processed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 422,
+                  "message": "The request is valid JSON but cannot be processed.",
+                  "error": "Unprocessable Entity"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Memo generation hourly request budget is exhausted for this actor or tenant.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "statusCode": 429,
+                  "message": "Memo generation request rate limit exceeded.",
+                  "error": "Too Many Requests"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error: An unexpected server error occurred.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 500,
+                  "message": "An unexpected server error occurred.",
+                  "error": "Internal Server Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Queue generation of a draft credit memo.",
+        "tags": [
+          "Credit Memos"
+        ]
+      }
+    },
+    "/v1/cases/{caseId}/memos": {
+      "get": {
+        "description": "Returns tenant-scoped memo versions, newest first. Structured memo content is decrypted only after tenant authorization and the response is not cacheable.",
+        "operationId": "MemosController_listForCase",
+        "parameters": [
+          {
+            "name": "x-tenant-id",
+            "in": "header",
+            "description": "Tenant selector validated against active membership.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "00000000-0000-4000-8000-000000000001"
+            }
+          },
+          {
+            "name": "caseId",
+            "required": true,
+            "in": "path",
+            "description": "Credit case whose memo versions should be listed.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tenant-scoped memo versions, newest first.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Response uses Cache-Control: no-store for decrypted memo content.",
+                "schema": {
+                  "type": "string",
+                  "example": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoVersionsResponseDto"
+                },
+                "example": {
+                  "items": [
+                    {
+                      "id": "00000000-0000-4000-8000-000000000081",
+                      "tenantId": "00000000-0000-4000-8000-000000000001",
+                      "caseId": "00000000-0000-4000-8000-000000000021",
+                      "versionNumber": 1,
+                      "status": "approved",
+                      "content": {
+                        "borrower_overview": "Evidence-based summary.",
+                        "request_summary": "Review requested.",
+                        "financial_highlights": [],
+                        "risks": [],
+                        "mitigants": [],
+                        "recommendation": "undetermined"
+                      },
+                      "approvedAt": "2026-10-30T00:10:00.000Z",
+                      "rejectedAt": null,
+                      "rejectionReason": null
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Case identifier is not a UUID.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 400,
+                  "message": "Request validation failed.",
+                  "error": "Bad Request"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized: Authentication is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 401,
+                  "message": "Authentication is required.",
+                  "error": "Unauthorized"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Active tenant membership and a read role are required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 403,
+                  "message": "The authenticated user is not authorized.",
+                  "error": "Forbidden"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Case does not exist in the selected tenant.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 404,
+                  "message": "The requested resource was not found.",
+                  "error": "Not Found"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict: The request conflicts with the current resource state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 409,
+                  "message": "The request conflicts with the current resource state.",
+                  "error": "Conflict"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity: The request is valid JSON but cannot be processed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 422,
+                  "message": "The request is valid JSON but cannot be processed.",
+                  "error": "Unprocessable Entity"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error: An unexpected server error occurred.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 500,
+                  "message": "An unexpected server error occurred.",
+                  "error": "Internal Server Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List memo versions for a credit case.",
+        "tags": [
+          "Credit Memos"
+        ]
+      }
+    },
+    "/v1/memos/{memoId}": {
+      "get": {
+        "description": "Returns a memo version visible to the active tenant. PII fields are decrypted only after authorization.",
+        "operationId": "MemosController_get",
+        "parameters": [
+          {
+            "name": "x-tenant-id",
+            "in": "header",
+            "description": "Tenant selector validated against active membership.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "00000000-0000-4000-8000-000000000001"
+            }
+          },
+          {
+            "name": "memoId",
+            "required": true,
+            "in": "path",
+            "description": "Memo version identifier.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tenant-scoped memo version.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Response uses Cache-Control: no-store for decrypted memo content.",
+                "schema": {
+                  "type": "string",
+                  "example": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoVersionResponseDto"
+                },
+                "example": {
+                  "id": "00000000-0000-4000-8000-000000000081",
+                  "tenantId": "00000000-0000-4000-8000-000000000001",
+                  "caseId": "00000000-0000-4000-8000-000000000021",
+                  "versionNumber": 1,
+                  "status": "draft",
+                  "content": {
+                    "borrower_overview": "Evidence-based summary.",
+                    "request_summary": "Review requested.",
+                    "financial_highlights": [],
+                    "risks": [],
+                    "mitigants": [],
+                    "recommendation": "undetermined"
+                  },
+                  "approvedAt": null,
+                  "rejectedAt": null,
+                  "rejectionReason": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request: Request validation failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 400,
+                  "message": "Request validation failed.",
+                  "error": "Bad Request"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized: Authentication is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 401,
+                  "message": "Authentication is required.",
+                  "error": "Unauthorized"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Tenant membership is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 403,
+                  "message": "The authenticated user is not authorized.",
+                  "error": "Forbidden"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Memo not found in this tenant.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 404,
+                  "message": "The requested resource was not found.",
+                  "error": "Not Found"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict: The request conflicts with the current resource state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 409,
+                  "message": "The request conflicts with the current resource state.",
+                  "error": "Conflict"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity: The request is valid JSON but cannot be processed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 422,
+                  "message": "The request is valid JSON but cannot be processed.",
+                  "error": "Unprocessable Entity"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error: An unexpected server error occurred.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 500,
+                  "message": "An unexpected server error occurred.",
+                  "error": "Internal Server Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Retrieve a memo draft and its decrypted structured content.",
+        "tags": [
+          "Credit Memos"
+        ]
+      }
+    },
+    "/v1/memos/{memoId}/approve": {
+      "post": {
+        "description": "Approves the draft only when no unresolved critical conflict exists or a bounded override reason is supplied. Approval is serialized with critical fact review.",
+        "operationId": "MemosController_approve",
+        "parameters": [
+          {
+            "name": "x-tenant-id",
+            "in": "header",
+            "description": "Tenant selector validated against active membership.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "00000000-0000-4000-8000-000000000001"
+            }
+          },
+          {
+            "name": "memoId",
+            "required": true,
+            "in": "path",
+            "description": "Draft memo version identifier.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "Supply an override reason only after reviewing unresolved critical conflicts.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApproveMemoDto"
+              },
+              "examples": {
+                "noOverride": {
+                  "summary": "Approve without conflicts",
+                  "value": {}
+                },
+                "override": {
+                  "summary": "Approve after documenting conflict review",
+                  "value": {
+                    "override_reason": "Conflicting financial evidence was reviewed."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Memo approved and approval audit event recorded.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Response uses Cache-Control: no-store for decrypted memo content.",
+                "schema": {
+                  "type": "string",
+                  "example": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoVersionResponseDto"
+                },
+                "example": {
+                  "id": "00000000-0000-4000-8000-000000000081",
+                  "tenantId": "00000000-0000-4000-8000-000000000001",
+                  "caseId": "00000000-0000-4000-8000-000000000021",
+                  "versionNumber": 1,
+                  "status": "approved",
+                  "content": {
+                    "borrower_overview": "Evidence-based summary.",
+                    "request_summary": "Review requested.",
+                    "financial_highlights": [],
+                    "risks": [],
+                    "mitigants": [],
+                    "recommendation": "undetermined"
+                  },
+                  "approvedAt": "2026-10-30T00:10:00.000Z",
+                  "rejectedAt": null,
+                  "rejectionReason": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid override_reason.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 400,
+                  "message": "Request validation failed.",
+                  "error": "Bad Request"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized: Authentication is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 401,
+                  "message": "Authentication is required.",
+                  "error": "Unauthorized"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Reviewer role is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 403,
+                  "message": "The authenticated user is not authorized.",
+                  "error": "Forbidden"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Memo not found in this tenant.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 404,
+                  "message": "The requested resource was not found.",
+                  "error": "Not Found"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Memo is not draft or unresolved critical conflicts require override_reason.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 409,
+                  "message": "The request conflicts with the current resource state.",
+                  "error": "Conflict"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity: The request is valid JSON but cannot be processed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 422,
+                  "message": "The request is valid JSON but cannot be processed.",
+                  "error": "Unprocessable Entity"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error: An unexpected server error occurred.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 500,
+                  "message": "An unexpected server error occurred.",
+                  "error": "Internal Server Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Approve a draft memo; critical conflicts require an override reason.",
+        "tags": [
+          "Credit Memos"
+        ]
+      }
+    },
+    "/v1/memos/{memoId}/reject": {
+      "post": {
+        "description": "Changes only a draft memo to rejected, stores the reason encrypted, and writes a memo.rejected audit event containing a keyed reason hash.",
+        "operationId": "MemosController_reject",
+        "parameters": [
+          {
+            "name": "x-tenant-id",
+            "in": "header",
+            "description": "Tenant selector validated against active membership.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "00000000-0000-4000-8000-000000000001"
+            }
+          },
+          {
+            "name": "memoId",
+            "required": true,
+            "in": "path",
+            "description": "Draft memo version identifier.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "Required rejection reason, stored encrypted.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RejectMemoDto"
+              },
+              "examples": {
+                "reject": {
+                  "summary": "Reject a draft pending additional evidence",
+                  "value": {
+                    "reason": "Updated cash flow evidence is required before this memo can proceed."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Memo rejected and audit event recorded.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Response uses Cache-Control: no-store for the decrypted rejection reason.",
+                "schema": {
+                  "type": "string",
+                  "example": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoVersionResponseDto"
+                },
+                "example": {
+                  "id": "00000000-0000-4000-8000-000000000081",
+                  "tenantId": "00000000-0000-4000-8000-000000000001",
+                  "caseId": "00000000-0000-4000-8000-000000000021",
+                  "versionNumber": 1,
+                  "status": "rejected",
+                  "content": {
+                    "borrower_overview": "Evidence-based summary.",
+                    "request_summary": "Review requested.",
+                    "financial_highlights": [],
+                    "risks": [],
+                    "mitigants": [],
+                    "recommendation": "undetermined"
+                  },
+                  "approvedAt": null,
+                  "rejectedAt": "2026-10-30T00:10:00.000Z",
+                  "rejectionReason": "Updated cash flow evidence is required before this memo can proceed."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Rejection reason is missing, blank, or too long.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 400,
+                  "message": "Request validation failed.",
+                  "error": "Bad Request"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized: Authentication is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 401,
+                  "message": "Authentication is required.",
+                  "error": "Unauthorized"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Tenant membership or reviewer role is insufficient.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 403,
+                  "message": "The authenticated user is not authorized.",
+                  "error": "Forbidden"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Memo does not exist in the selected tenant.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 404,
+                  "message": "The requested resource was not found.",
+                  "error": "Not Found"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Only a draft memo can be rejected.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 409,
+                  "message": "The request conflicts with the current resource state.",
+                  "error": "Conflict"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity: The request is valid JSON but cannot be processed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 422,
+                  "message": "The request is valid JSON but cannot be processed.",
+                  "error": "Unprocessable Entity"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error: An unexpected server error occurred.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 500,
+                  "message": "An unexpected server error occurred.",
+                  "error": "Internal Server Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Reject a draft memo with a documented reason.",
+        "tags": [
+          "Credit Memos"
+        ]
+      }
+    },
+    "/v1/jobs/{jobId}": {
+      "get": {
+        "description": "Returns only the job visible to the active tenant, including progress and a stable error code. Internal error text and worker details are not exposed.",
+        "operationId": "JobsController_get",
+        "parameters": [
+          {
+            "name": "x-tenant-id",
+            "in": "header",
+            "description": "Tenant selector validated against active membership.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "00000000-0000-4000-8000-000000000001"
+            }
+          },
+          {
+            "name": "jobId",
+            "required": true,
+            "in": "path",
+            "description": "Processing job identifier returned when work was accepted.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current processing job state.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Response uses Cache-Control: no-store.",
+                "schema": {
+                  "type": "string",
+                  "example": "no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobStatusResponseDto"
+                },
+                "example": {
+                  "id": "00000000-0000-4000-8000-000000000061",
+                  "caseId": "00000000-0000-4000-8000-000000000021",
+                  "documentId": "00000000-0000-4000-8000-000000000041",
+                  "status": "processing",
+                  "progress": 60,
+                  "error_code": null,
+                  "attemptCount": 1,
+                  "updatedAt": "2026-10-30T00:05:00.000Z"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Job identifier is not a UUID.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 400,
+                  "message": "Request validation failed.",
+                  "error": "Bad Request"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized: Authentication is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 401,
+                  "message": "Authentication is required.",
+                  "error": "Unauthorized"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Active tenant membership and a read role are required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 403,
+                  "message": "The authenticated user is not authorized.",
+                  "error": "Forbidden"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Job does not exist in the selected tenant.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 404,
+                  "message": "The requested resource was not found.",
+                  "error": "Not Found"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict: The request conflicts with the current resource state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 409,
+                  "message": "The request conflicts with the current resource state.",
+                  "error": "Conflict"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity: The request is valid JSON but cannot be processed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 422,
+                  "message": "The request is valid JSON but cannot be processed.",
+                  "error": "Unprocessable Entity"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error: An unexpected server error occurred.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 500,
+                  "message": "An unexpected server error occurred.",
+                  "error": "Internal Server Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Get the status of an asynchronous processing job.",
+        "tags": [
+          "Processing Jobs"
+        ]
+      }
+    },
+    "/health/live": {
+      "get": {
+        "description": "Unauthenticated liveness probe for load balancers and process supervisors.",
+        "operationId": "HealthController_getLiveness",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The API process is running.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "service"
+                  ],
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "service": {
+                      "type": "string",
+                      "example": "anvil-web"
+                    }
+                  }
+                },
+                "example": {
+                  "status": "ok",
+                  "service": "anvil-web"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Check whether the API process is alive.",
+        "tags": [
+          "Health"
+        ]
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "description": "Unauthenticated readiness probe. Dependency-specific checks are not configured in this phase.",
+        "operationId": "HealthController_getReadiness",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The API process is ready. External dependency checks are introduced with their adapters.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "service"
+                  ],
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "service": {
+                      "type": "string",
+                      "example": "anvil-web"
+                    }
+                  }
+                },
+                "example": {
+                  "status": "ok",
+                  "service": "anvil-web"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Check whether the API can accept requests.",
+        "tags": [
+          "Health"
+        ]
+      }
+    },
+    "/health/dependencies": {
+      "get": {
+        "description": "Reports that detailed dependency probes are not available in this deployment foundation.",
+        "operationId": "HealthController_getDependencies",
+        "parameters": [],
+        "responses": {
+          "501": {
+            "description": "Dependency adapters are not configured in the foundation phase.",
+            "content": {
+              "application/json": {
+                "example": {
+                  "statusCode": 501,
+                  "message": "Dependency health checks are not configured yet.",
+                  "error": "Not Implemented"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Report dependency health-check availability.",
+        "tags": [
+          "Health"
+        ]
+      }
+    }
+  },
+  "info": {
+    "title": "Anvil API",
+    "description": "OpenAPI contract for the Anvil underwriting platform.",
+    "version": "1.0.0",
+    "contact": {}
+  },
+  "tags": [],
+  "servers": [],
+  "components": {
+    "securitySchemes": {
+      "bearer": {
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "type": "http"
+      }
+    },
+    "schemas": {
+      "CreateCaseDto": {
+        "type": "object",
+        "properties": {
+          "entityId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Existing legal entity identifier."
+          },
+          "currency": {
+            "type": "string",
+            "example": "USD",
+            "minLength": 3,
+            "maxLength": 3
+          }
+        },
+        "required": [
+          "entityId",
+          "currency"
+        ]
+      },
+      "CreditCaseResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "tenantId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "entityId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "caseNumber": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "documents_pending",
+              "processing",
+              "memo_ready",
+              "in_review",
+              "approved",
+              "rejected",
+              "archived"
+            ]
+          },
+          "currency": {
+            "type": "string",
+            "example": "USD"
+          },
+          "version": {
+            "type": "number",
+            "minimum": 1
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "deletedAt": {
+            "type": "object",
+            "format": "date-time",
+            "nullable": true
+          },
+          "currentJobId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Latest processing job to poll while the case is processing.",
+            "example": "00000000-0000-4000-8000-000000000061"
+          }
+        },
+        "required": [
+          "id",
+          "tenantId",
+          "entityId",
+          "caseNumber",
+          "status",
+          "currency",
+          "version",
+          "createdAt",
+          "updatedAt",
+          "deletedAt"
+        ]
+      },
+      "ApiErrorResponseDto": {
+        "type": "object",
+        "properties": {
+          "statusCode": {
+            "type": "number",
+            "example": 400,
+            "description": "HTTP status code."
+          },
+          "message": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            ],
+            "example": "Request validation failed."
+          },
+          "error": {
+            "type": "string",
+            "example": "Bad Request",
+            "description": "NestJS HTTP exception label when present."
+          }
+        },
+        "required": [
+          "statusCode",
+          "message"
+        ]
+      },
+      "CasePageResponseDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CreditCaseResponseDto"
+            }
+          },
+          "nextCursor": {
+            "type": "string",
+            "nullable": true,
+            "description": "Cursor to fetch the next page."
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ]
+      },
+      "UpdateCaseDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "documents_pending",
+              "processing",
+              "memo_ready",
+              "in_review",
+              "approved",
+              "rejected",
+              "archived"
+            ]
+          },
+          "version": {
+            "type": "number",
+            "minimum": 1,
+            "description": "Expected case version for optimistic concurrency."
+          }
+        },
+        "required": [
+          "status",
+          "version"
+        ]
+      },
+      "ArchiveCaseDto": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "number",
+            "minimum": 1,
+            "description": "Expected case version for optimistic concurrency."
+          }
+        },
+        "required": [
+          "version"
+        ]
+      },
+      "DocumentListItemResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "caseId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "contentType": {
+            "type": "string",
+            "enum": [
+              "application/pdf",
+              "image/jpeg",
+              "image/png",
+              "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            ]
+          },
+          "sizeBytes": {
+            "type": "number",
+            "minimum": 1
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending_upload",
+              "uploaded",
+              "processing",
+              "processed",
+              "rejected",
+              "failed"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "caseId",
+          "contentType",
+          "sizeBytes",
+          "status",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "DocumentListResponseDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DocumentListItemResponseDto"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "PresignDocumentDto": {
+        "type": "object",
+        "properties": {
+          "contentType": {
+            "type": "string",
+            "enum": [
+              "application/pdf",
+              "image/jpeg",
+              "image/png",
+              "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            ],
+            "example": "application/pdf"
+          },
+          "sizeBytes": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 52428800,
+            "example": 1048576,
+            "description": "Plaintext file size. The encrypted R2 object is 16 bytes larger."
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "example": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        },
+        "required": [
+          "contentType",
+          "sizeBytes",
+          "sha256"
+        ]
+      },
+      "PresignedDocumentResponseDto": {
+        "type": "object",
+        "properties": {
+          "documentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "uploadUrl": {
+            "type": "string",
+            "format": "uri"
+          },
+          "requiredHeaders": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "encryption": {
+            "type": "object",
+            "example": {
+              "algorithm": "AES-256-GCM",
+              "keyBase64": "<one-time document key>",
+              "nonceBase64": "<12-byte nonce>",
+              "additionalDataBase64": "<authenticated metadata>",
+              "tagLengthBits": 128,
+              "ciphertextFormat": "ciphertext+tag"
+            }
+          }
+        },
+        "required": [
+          "documentId",
+          "uploadUrl",
+          "requiredHeaders",
+          "expiresAt",
+          "encryption"
+        ]
+      },
+      "ConfirmUploadDto": {
+        "type": "object",
+        "properties": {
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "example": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        },
+        "required": [
+          "sha256"
+        ]
+      },
+      "DocumentAcceptedResponseDto": {
+        "type": "object",
+        "properties": {
+          "job_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "processing",
+              "retry_wait",
+              "succeeded",
+              "failed",
+              "dead_lettered"
+            ]
+          }
+        },
+        "required": [
+          "job_id",
+          "status"
+        ]
+      },
+      "ExtractedFactResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "tenantId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Tenant that owns this fact."
+          },
+          "extractionRunId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "caseId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "fieldName": {
+            "type": "string"
+          },
+          "rawValue": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "object",
+                "additionalProperties": true
+              },
+              {
+                "type": "array",
+                "items": {}
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "normalizedValue": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "object",
+                "additionalProperties": true
+              },
+              {
+                "type": "array",
+                "items": {}
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sourcePage": {
+            "type": "number",
+            "minimum": 1
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "reviewStatus": {
+            "type": "string",
+            "enum": [
+              "unverified",
+              "verified",
+              "needs_evidence",
+              "conflict",
+              "rejected"
+            ]
+          },
+          "isCritical": {
+            "type": "boolean",
+            "default": false,
+            "description": "Backward-compatible camelCase criticality flag."
+          },
+          "is_critical": {
+            "type": "boolean",
+            "default": false,
+            "description": "Whether this fact is critical for memo review and conflict overrides."
+          }
+        },
+        "required": [
+          "id",
+          "tenantId",
+          "extractionRunId",
+          "caseId",
+          "fieldName",
+          "rawValue",
+          "normalizedValue",
+          "sourcePage",
+          "confidence",
+          "reviewStatus",
+          "isCritical",
+          "is_critical"
+        ]
+      },
+      "UpdateFactDto": {
+        "type": "object",
+        "properties": {
+          "normalizedValue": {
+            "description": "Normalized JSON value; plaintext is encrypted before database persistence.",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "object"
+              },
+              {
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reviewStatus": {
+            "type": "string",
+            "enum": [
+              "unverified",
+              "verified",
+              "needs_evidence",
+              "conflict",
+              "rejected"
+            ]
+          },
+          "is_critical": {
+            "type": "boolean",
+            "default": false,
+            "description": "Marks whether this fact is critical for memo review and conflict overrides. Omitted updates preserve the current value."
+          }
+        }
+      },
+      "RequestMemoGenerationDto": {
+        "type": "object",
+        "properties": {
+          "override_reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000,
+            "description": "Required when this case has unresolved critical facts with review_status=conflict."
+          }
+        }
+      },
+      "MemoAcceptedResponseDto": {
+        "type": "object",
+        "properties": {
+          "accepted": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "jobId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Outbox generation key returned as the asynchronous job ID."
+          }
+        },
+        "required": [
+          "accepted",
+          "jobId"
+        ]
+      },
+      "MemoVersionResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "tenantId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "caseId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "versionNumber": {
+            "type": "number",
+            "minimum": 1
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "generating",
+              "draft",
+              "approved",
+              "rejected",
+              "failed"
+            ]
+          },
+          "content": {
+            "type": "object",
+            "additionalProperties": true,
+            "nullable": true
+          },
+          "approvedAt": {
+            "type": "object",
+            "format": "date-time",
+            "nullable": true
+          },
+          "rejectedAt": {
+            "type": "object",
+            "format": "date-time",
+            "nullable": true
+          },
+          "rejectionReason": {
+            "type": "string",
+            "nullable": true,
+            "description": "Decrypted rejection reason; only available to authorized tenant members."
+          }
+        },
+        "required": [
+          "id",
+          "tenantId",
+          "caseId",
+          "versionNumber",
+          "status",
+          "content",
+          "approvedAt",
+          "rejectedAt",
+          "rejectionReason"
+        ]
+      },
+      "MemoVersionsResponseDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MemoVersionResponseDto"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "ApproveMemoDto": {
+        "type": "object",
+        "properties": {
+          "override_reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000,
+            "description": "Required when unresolved critical conflicts remain."
+          }
+        }
+      },
+      "RejectMemoDto": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000,
+            "description": "Reason for rejecting this draft. Stored encrypted and audited by hash."
+          }
+        },
+        "required": [
+          "reason"
+        ]
+      },
+      "JobStatusResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "caseId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "documentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "processing",
+              "retry_wait",
+              "succeeded",
+              "failed",
+              "dead_lettered"
+            ]
+          },
+          "progress": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "error_code": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "DOCUMENT_CHECKSUM_MISMATCH",
+              "DOCUMENT_ENCRYPTION_FAILED",
+              "DOCUMENT_PARSE_FAILED"
+            ]
+          },
+          "attemptCount": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 3
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "caseId",
+          "documentId",
+          "status",
+          "progress",
+          "error_code",
+          "attemptCount",
+          "updatedAt"
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "name": "anvil-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "generate:api": "openapi-typescript ../openapi.json -o src/lib/api/schema.d.ts"
+  },
+  "dependencies": {
+    "@astryxdesign/core": "^0.7.4",
+    "@astryxdesign/theme-neutral": "^0.7.4",
+    "@tanstack/react-query": "^5.90.0",
+    "next": "^15.5.6",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.16",
+    "@types/node": "^24.9.1",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "openapi-typescript": "^7.10.1",
+    "tailwindcss": "^4.1.16",
+    "typescript": "^5.9.3"
+  }
+}

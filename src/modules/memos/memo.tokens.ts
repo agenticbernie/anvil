@@ -1,0 +1,3 @@
+export const MEMO_REPOSITORY = Symbol('MEMO_REPOSITORY');
+export const LLM_MEMO_PROVIDER = Symbol('LLM_MEMO_PROVIDER');
+export const MEMO_CONTENT_CIPHER = Symbol('MEMO_CONTENT_CIPHER');
