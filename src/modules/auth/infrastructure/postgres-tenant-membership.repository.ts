@@ -18,6 +18,7 @@ export class PostgresTenantMembershipRepository implements TenantMembershipRepos
          JOIN public.users AS app_user ON app_user.id = membership.user_id
          WHERE membership.tenant_id = $1
            AND $2::uuid = (SELECT auth.uid())
+           AND (app_user.auth_user_id = $2::uuid OR public.is_current_clerk_user(app_user.clerk_user_id))
            AND public.is_tenant_member($1)
            AND membership.status = 'active' AND membership.deleted_at IS NULL
            AND app_user.status = 'active' AND app_user.deleted_at IS NULL
