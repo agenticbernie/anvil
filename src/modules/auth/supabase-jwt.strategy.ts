@@ -26,14 +26,14 @@ export class SupabaseJwtStrategy extends PassportStrategy(Strategy, 'jwt') {
         ...init,
         headers: {
           ...(init?.headers as Record<string, string> || {}),
-                   'apikey': anonKey,
+          apikey: anonKey,
         },
       });
     };
 
     this.jwks = createRemoteJWKSet(new URL(jwksUrl), {
-      fetch: customFetch as typeof fetch,
-    });
+      fetch: customFetch,
+    } as any);
 
     this.issuer = new URL('/auth/v1', `${supabaseUrl.replace(/\/$/, '')}/`).toString();
   }
