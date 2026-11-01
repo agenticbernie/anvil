@@ -69,6 +69,7 @@ export const environmentValidationSchema = Joi.object({
   SUPABASE_ANON_KEY: optionalSecret,
   SUPABASE_SERVICE_ROLE_KEY: optionalSecret,
   SUPABASE_JWKS_URL: externalUrl,
+  SUPABASE_JWT_SECRET: optionalSecret,
   CLERK_SECRET_KEY: Joi.when('NODE_ENV', {
     is: 'production',
     then: Joi.string().pattern(/^sk_[A-Za-z0-9_-]+$/).required(),
