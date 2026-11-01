@@ -1,6 +1,6 @@
-import { UnauthorizedException } from '@nestjs/common';
+import { Logger, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { afterEach, describe, expect, it } from '@jest/globals';
+import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { exportJWK, generateKeyPair, SignJWT } from 'jose';
@@ -8,9 +8,11 @@ import { SupabaseJwtStrategy } from './supabase-jwt.strategy.js';
 
 const userId = '00000000-0000-4000-8000-000000000001';
 const anonKey = 'test-anon-key';
+const jwtSecret = 'test-only-supabase-jwt-secret-32-bytes';
 const cleanups: Array<() => Promise<void>> = [];
 
 afterEach(async () => {
+  jest.restoreAllMocks();
   await Promise.all(cleanups.splice(0).map((cleanup) => cleanup()));
 });
 
@@ -44,14 +46,62 @@ describe('SupabaseJwtStrategy', () => {
   });
 
   it('rejects a JWKS gateway error without exposing its response body', async () => {
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
     const { strategy, sign } = await fixture(true);
     const token = await sign({ role: 'authenticated' });
     await expect(strategy.validate({ headers: { authorization: `Bearer ${token}` } } as never))
       .rejects.toThrow('Bearer token is invalid or expired.');
+    const logged = JSON.stringify(warn.mock.calls);
+    expect(logged).toContain('404');
+    expect(logged).toContain('[redacted]');
+    expect(logged).not.toContain('private gateway response');
+    expect(logged).not.toContain(anonKey);
+  });
+
+  it('verifies an HS256 token with the configured JWT secret', async () => {
+    const { strategy, signHs } = await fixture(true);
+    const token = await signHs({ role: 'authenticated', app_metadata: { tenant_id: userId } });
+    await expect(strategy.validate({ headers: { authorization: `Bearer ${token}` } } as never))
+      .resolves.toEqual({ id: userId, appMetadata: { tenant_id: userId } });
+  });
+
+  it('rejects HS256 tokens signed with another secret', async () => {
+    const { strategy, signHs } = await fixture();
+    const token = await signHs({ role: 'authenticated' }, 'wrong-signing-secret');
+    await expect(strategy.validate({ headers: { authorization: `Bearer ${token}` } } as never))
+      .rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
+  it('rejects HS256 tokens with an invalid audience', async () => {
+    const { strategy, signHs } = await fixture();
+    const token = await signHs({ role: 'authenticated' }, jwtSecret, 'other-audience');
+    await expect(strategy.validate({ headers: { authorization: `Bearer ${token}` } } as never))
+      .rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
+  it('rejects an expired HS256 token', async () => {
+    const { strategy, signHs } = await fixture();
+    const token = await signHs({ role: 'authenticated' }, jwtSecret, 'authenticated', '-1h');
+    await expect(strategy.validate({ headers: { authorization: `Bearer ${token}` } } as never))
+      .rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
+  it('rejects HS256 tokens when no JWT secret is configured', async () => {
+    const { strategy, signHs } = await fixture(false, false);
+    const token = await signHs({ role: 'authenticated' });
+    await expect(strategy.validate({ headers: { authorization: `Bearer ${token}` } } as never))
+      .rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
+  it('does not use the JWT secret to accept an asymmetric token when JWKS fails', async () => {
+    const { strategy, sign } = await fixture(true);
+    const token = await sign({ role: 'authenticated' });
+    await expect(strategy.validate({ headers: { authorization: `Bearer ${token}` } } as never))
+      .rejects.toBeInstanceOf(UnauthorizedException);
   });
 });
 
-async function fixture(rejectJwks = false) {
+async function fixture(rejectJwks = false, includeSecret = true) {
   const { privateKey, publicKey } = await generateKeyPair('ES256');
   const exported = await exportJWK(publicKey);
   const key = { ...exported, kid: 'test-key', alg: 'ES256', use: 'sig' };
@@ -61,8 +111,8 @@ async function fixture(rejectJwks = false) {
     const authorization = request.headers.authorization;
     requests.push({ apikey, authorization });
     if (rejectJwks || apikey !== anonKey || authorization !== `Bearer ${anonKey}`) {
-      response.writeHead(403);
-      response.end('private gateway response');
+      response.writeHead(404, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ message: 'private gateway response', code: '404' }));
       return;
     }
     response.writeHead(200, { 'content-type': 'application/json' });
@@ -76,6 +126,7 @@ async function fixture(rejectJwks = false) {
     SUPABASE_URL: 'https://example.supabase.co',
     SUPABASE_JWKS_URL: `http://127.0.0.1:${address.port}/.well-known/jwks.json`,
     SUPABASE_ANON_KEY: anonKey,
+    SUPABASE_JWT_SECRET: includeSecret ? jwtSecret : '',
   });
   const strategy = new SupabaseJwtStrategy(config);
   const sign = (claims: Record<string, unknown>) => new SignJWT(claims)
@@ -86,6 +137,14 @@ async function fixture(rejectJwks = false) {
     .setIssuedAt()
     .setExpirationTime('5m')
     .sign(privateKey);
+  const signHs = (claims: Record<string, unknown>, secret = jwtSecret, audience = 'authenticated', expiration = '5m') => new SignJWT(claims)
+    .setProtectedHeader({ alg: 'HS256' })
+    .setIssuer('https://example.supabase.co/auth/v1')
+    .setAudience(audience)
+    .setSubject(userId)
+    .setIssuedAt()
+    .setExpirationTime(expiration)
+    .sign(new TextEncoder().encode(secret));
   cleanups.push(() => new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())));
-  return { strategy, sign, requests };
+  return { strategy, sign, signHs, requests };
 }
