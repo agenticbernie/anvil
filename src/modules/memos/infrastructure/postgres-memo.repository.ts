@@ -15,7 +15,7 @@ export class PostgresMemoRepository implements MemoRepository {
   async claimGeneration(tenantId: string, actorId: string, caseId: string, inputHash: string, tx: TenantTransaction) {
     return tx.withBackendRole(async (backend) => {
       const caseLock = await backend.query(
-        `SELECT id FROM public.credit_cases WHERE tenant_id = $1 AND id = $2 AND $3::uuid = (SELECT auth.uid()) FOR UPDATE`,
+        `SELECT id FROM public.credit_cases WHERE tenant_id = $1 AND id = $2 AND $3::uuid = NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid FOR UPDATE`,
         [tenantId, caseId, actorId],
       );
       if (caseLock.rowCount !== 1) throw new NotFoundException('Credit case not found in this tenant.');
@@ -46,7 +46,7 @@ export class PostgresMemoRepository implements MemoRepository {
       );
       const inserted = await backend.query<MemoRow>(
         `INSERT INTO public.memo_versions (tenant_id, case_id, version_number, input_hash, status, generation_lock_expires_at)
-         SELECT $1, $3, $4, $5, 'generating', now() + interval '10 minutes' WHERE $2::uuid = (SELECT auth.uid())
+         SELECT $1, $3, $4, $5, 'generating', now() + interval '10 minutes' WHERE $2::uuid = NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid
          RETURNING *`, [tenantId, actorId, caseId, Number(version.rows[0]?.next_version ?? 1), inputHash],
       );
       const row = inserted.rows[0];
@@ -59,7 +59,7 @@ export class PostgresMemoRepository implements MemoRepository {
     await tx.withBackendRole(async (backend) => {
       const result = await backend.query(
         `UPDATE public.memo_versions SET status = 'draft', content = $4::jsonb, generation_lock_expires_at = NULL
-         WHERE tenant_id = $1 AND id = $2 AND $3::uuid = (SELECT auth.uid()) AND status = 'generating'`,
+         WHERE tenant_id = $1 AND id = $2 AND $3::uuid = NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid AND status = 'generating'`,
         [tenantId, memoId, actorId, JSON.stringify(encryptedContent)],
       );
       if (result.rowCount !== 1) throw new ConflictException('Memo generation claim is no longer active.');
@@ -70,7 +70,7 @@ export class PostgresMemoRepository implements MemoRepository {
     await tx.withBackendRole(async (backend) => {
       await backend.query(
         `UPDATE public.memo_versions SET status = 'failed', generation_lock_expires_at = NULL WHERE tenant_id = $1 AND id = $2
-          AND $3::uuid = (SELECT auth.uid()) AND status = 'generating'`, [tenantId, memoId, actorId],
+          AND $3::uuid = NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid AND status = 'generating'`, [tenantId, memoId, actorId],
       );
     });
   }
@@ -78,7 +78,7 @@ export class PostgresMemoRepository implements MemoRepository {
   async getById(tenantId: string, actorId: string, memoId: string, tx: TenantTransaction): Promise<MemoVersion | null> {
     return tx.withBackendRole(async (backend) => {
       const result = await backend.query<MemoRow>(
-        `SELECT * FROM public.memo_versions WHERE tenant_id = $1 AND id = $2 AND $3::uuid = (SELECT auth.uid())`,
+        `SELECT * FROM public.memo_versions WHERE tenant_id = $1 AND id = $2 AND $3::uuid = NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid`,
         [tenantId, memoId, actorId],
       );
       return result.rows[0] ? this.map(tenantId, result.rows[0]) : null;
@@ -89,7 +89,7 @@ export class PostgresMemoRepository implements MemoRepository {
     return tx.withBackendRole(async (backend) => {
       const result = await backend.query<MemoRow>(
         `SELECT * FROM public.memo_versions
-         WHERE tenant_id = $1 AND case_id = $2 AND $3::uuid = (SELECT auth.uid())
+         WHERE tenant_id = $1 AND case_id = $2 AND $3::uuid = NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid
          ORDER BY version_number DESC, id DESC`,
         [tenantId, caseId, actorId],
       );
@@ -101,7 +101,7 @@ export class PostgresMemoRepository implements MemoRepository {
     return tx.withBackendRole(async (backend) => {
       const result = await backend.query<MemoRow>(
         `UPDATE public.memo_versions SET status = 'approved', approved_by = $3, approved_at = now(), approval_override_ciphertext = $4::jsonb
-         WHERE tenant_id = $1 AND id = $2 AND status = 'draft' AND $3::uuid = (SELECT auth.uid()) RETURNING *`,
+         WHERE tenant_id = $1 AND id = $2 AND status = 'draft' AND $3::uuid = NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid RETURNING *`,
         [tenantId, memoId, actorId, encryptedReason === null ? null : JSON.stringify(encryptedReason)],
       );
       const row = result.rows[0];
@@ -115,7 +115,7 @@ export class PostgresMemoRepository implements MemoRepository {
       const result = await backend.query<MemoRow>(
         `UPDATE public.memo_versions
          SET status = 'rejected', rejected_by = $3, rejected_at = now(), rejection_reason_ciphertext = $4::jsonb
-         WHERE tenant_id = $1 AND id = $2 AND status = 'draft' AND $3::uuid = (SELECT auth.uid())
+         WHERE tenant_id = $1 AND id = $2 AND status = 'draft' AND $3::uuid = NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid
          RETURNING *`,
         [tenantId, memoId, actorId, JSON.stringify(encryptedReason)],
       );

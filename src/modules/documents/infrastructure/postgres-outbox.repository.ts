@@ -16,7 +16,7 @@ export class PostgresOutboxRepository implements OutboxRepository {
       if (eventType === 'memo.generate.requested') await this.enforceMemoGenerationBudget(tenantId, actorId, tx);
       const result = await tx.query(
         `INSERT INTO public.outbox_events (tenant_id, actor_id, event_type, payload)
-         SELECT $1, $2, $3, $4::jsonb WHERE $2::uuid = (SELECT auth.uid())`,
+         SELECT $1, $2, $3, $4::jsonb WHERE $2::uuid = NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid`,
         [tenantId, actorId, eventType, JSON.stringify(payload)],
       );
       if (result.rowCount !== 1) throw new ForbiddenException('Actor does not match the authenticated database principal.');
@@ -75,7 +75,7 @@ export class PostgresOutboxRepository implements OutboxRepository {
     await transaction.withBackendRole(async (tx) => {
       const result = await tx.query(
         `UPDATE public.outbox_events SET status = 'published', published_at = now(), locked_until = NULL, last_error = NULL
-         WHERE tenant_id = $1 AND $2::uuid = (SELECT auth.uid()) AND actor_id = $2 AND id = $3 AND status = 'publishing'`,
+         WHERE tenant_id = $1 AND $2::uuid = NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid AND actor_id = $2 AND id = $3 AND status = 'publishing'`,
         [tenantId, actorId, eventId],
       );
       if (result.rowCount !== 1) throw new ConflictException('Outbox event lease is no longer active.');
@@ -89,7 +89,7 @@ export class PostgresOutboxRepository implements OutboxRepository {
          SET status = CASE WHEN publish_attempts >= 10 THEN 'dead_lettered' ELSE 'pending' END,
              available_at = now() + make_interval(secs => LEAST(power(2, publish_attempts)::integer, 300)),
              locked_until = NULL, last_error = $4
-         WHERE tenant_id = $1 AND $2::uuid = (SELECT auth.uid()) AND actor_id = $2 AND id = $3 AND status = 'publishing'`,
+         WHERE tenant_id = $1 AND $2::uuid = NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid AND actor_id = $2 AND id = $3 AND status = 'publishing'`,
         [tenantId, actorId, event.id, errorMessage.slice(0, 500)],
       );
       if (result.rowCount !== 1) throw new ConflictException('Outbox event could not be released for retry.');

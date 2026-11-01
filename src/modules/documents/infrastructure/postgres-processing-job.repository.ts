@@ -12,7 +12,7 @@ export class PostgresProcessingJobRepository implements ProcessingJobRepository 
     return transaction.withBackendRole(async (tx) => {
       const result = await tx.query<JobRow>(
         `INSERT INTO public.processing_jobs (tenant_id, case_id, document_id, actor_id, job_type)
-         SELECT $1, $3, $4, $2, 'document.parse' WHERE $2::uuid = (SELECT auth.uid())
+         SELECT $1, $3, $4, $2, 'document.parse' WHERE $2::uuid = NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid
          RETURNING id, tenant_id, case_id, document_id, actor_id, status, attempt_count`,
         [tenantId, actorId, caseId, documentId],
       );
@@ -24,7 +24,7 @@ export class PostgresProcessingJobRepository implements ProcessingJobRepository 
   async findForDocument(tenantId: string, actorId: string, documentId: string, transaction: TenantTransaction): Promise<ProcessingJobRecord | null> {
     const result = await transaction.query<JobRow>(
       `SELECT id, tenant_id, case_id, document_id, actor_id, status, attempt_count FROM public.processing_jobs
-       WHERE tenant_id = $1 AND actor_id = $2 AND $2::uuid = (SELECT auth.uid()) AND document_id = $3 AND job_type = 'document.parse'`,
+       WHERE tenant_id = $1 AND actor_id = $2 AND $2::uuid = NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid AND document_id = $3 AND job_type = 'document.parse'`,
       [tenantId, actorId, documentId],
     );
     return result.rows[0] ? toJob(result.rows[0]) : null;
@@ -37,7 +37,7 @@ export class PostgresProcessingJobRepository implements ProcessingJobRepository 
     }>(
       `SELECT id, case_id, document_id, status, progress, error_code, attempt_count, updated_at
        FROM public.processing_jobs
-       WHERE tenant_id = $1 AND id = $3 AND $2::uuid = (SELECT auth.uid())`,
+       WHERE tenant_id = $1 AND id = $3 AND $2::uuid = NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid`,
       [tenantId, actorId, jobId],
     );
     const row = result.rows[0];
@@ -63,7 +63,7 @@ export class PostgresProcessingJobRepository implements ProcessingJobRepository 
         `UPDATE public.processing_jobs
          SET status = 'processing', attempt_count = attempt_count + 1, progress = GREATEST(progress, 10),
              lock_expires_at = now() + interval '5 minutes', started_at = COALESCE(started_at, now()), updated_at = now()
-         WHERE tenant_id = $1 AND actor_id = $2 AND $2::uuid = (SELECT auth.uid()) AND id = $3
+         WHERE tenant_id = $1 AND actor_id = $2 AND $2::uuid = NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid AND id = $3
            AND document_id = $4 AND case_id = $5
            AND attempt_count < 3
            AND (status IN ('queued', 'retry_wait') OR (status = 'processing' AND lock_expires_at < now()))
@@ -73,7 +73,7 @@ export class PostgresProcessingJobRepository implements ProcessingJobRepository 
       if (updated.rows[0]) return { acquired: true, completed: false, attemptCount: updated.rows[0].attempt_count };
       const current = await tx.query<JobRow>(
         `SELECT id, tenant_id, case_id, document_id, actor_id, status, attempt_count FROM public.processing_jobs
-         WHERE tenant_id = $1 AND actor_id = $2 AND $2::uuid = (SELECT auth.uid()) AND id = $3
+         WHERE tenant_id = $1 AND actor_id = $2 AND $2::uuid = NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid AND id = $3
            AND document_id = $4 AND case_id = $5`,
         [tenantId, actorId, jobId, documentId, caseId],
       );
@@ -96,7 +96,7 @@ export class PostgresProcessingJobRepository implements ProcessingJobRepository 
       const result = await tx.query(
         `UPDATE public.processing_jobs SET status = 'succeeded', progress = 100, worker_version = $4,
             error_code = NULL, last_error = NULL, lock_expires_at = NULL, updated_at = now(), completed_at = now()
-         WHERE tenant_id = $1 AND actor_id = $2 AND $2::uuid = (SELECT auth.uid()) AND id = $3 AND status = 'processing'`,
+         WHERE tenant_id = $1 AND actor_id = $2 AND $2::uuid = NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid AND id = $3 AND status = 'processing'`,
         [tenantId, actorId, jobId, workerVersion],
       );
       if (result.rowCount !== 1) throw new ConflictException('Processing job is no longer owned by this attempt.');
@@ -114,7 +114,7 @@ export class PostgresProcessingJobRepository implements ProcessingJobRepository 
       const result = await tx.query(
         `UPDATE public.processing_jobs SET status = $4, error_code = $5, last_error = $6,
             lock_expires_at = NULL, updated_at = now(), completed_at = CASE WHEN $4 = 'dead_lettered' THEN now() ELSE NULL END
-         WHERE tenant_id = $1 AND actor_id = $2 AND $2::uuid = (SELECT auth.uid()) AND id = $3 AND status = 'processing'`,
+         WHERE tenant_id = $1 AND actor_id = $2 AND $2::uuid = NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid AND id = $3 AND status = 'processing'`,
         [tenantId, actorId, jobId, status, code, safeProcessingErrorMessage(code)],
       );
       if (result.rowCount !== 1) throw new ConflictException('Processing job is no longer owned by this attempt.');

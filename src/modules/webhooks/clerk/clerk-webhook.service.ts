@@ -174,11 +174,12 @@ export class ClerkWebhookService {
   private async upsertClerkUser(client: import('pg').PoolClient, clerkUserId: string): Promise<{ rows: { id: string }[] }> {
     // Supabase UUIDs can arrive after Clerk webhooks; the Clerk mapping is sufficient
     // to safely create memberships now and attach auth_user_id when it becomes available.
-    const identity = await client.query<{ user_id: string }>(
-      `SELECT user_id::text AS user_id FROM auth.identities
-       WHERE provider_id = $1 AND provider IN ('custom:clerk', 'clerk') LIMIT 1`,
+    await client.query('SET LOCAL ROLE anvil_backend');
+    const identity = await client.query<{ user_id: string | null }>(
+      `SELECT public.clerk_supabase_user_id($1)::text AS user_id`,
       [clerkUserId],
     );
+    await client.query('RESET ROLE');
     return client.query<{ id: string }>(
       `INSERT INTO public.users (auth_user_id, clerk_user_id, status)
        VALUES ($1::uuid, $2, 'active')

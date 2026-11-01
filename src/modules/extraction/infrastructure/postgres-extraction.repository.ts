@@ -24,7 +24,7 @@ export class PostgresExtractionRepository implements ExtractionRepository {
       const result = await backend.query(
         `SELECT id, tenant_id, case_id, document_id, source_text_ciphertext, source_text_nonce,
                 source_text_key_version, source_page_count
-         FROM public.document_versions WHERE tenant_id = $1 AND id = $2 AND $3::uuid = (SELECT auth.uid())`,
+         FROM public.document_versions WHERE tenant_id = $1 AND id = $2 AND $3::uuid = NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid`,
         [tenantId, versionId, actorId],
       );
       const row = result.rows[0];
@@ -43,7 +43,7 @@ export class PostgresExtractionRepository implements ExtractionRepository {
       const inserted = await backend.query<RunRow>(
         `INSERT INTO public.extraction_runs (tenant_id, case_id, document_version_id, model_name, prompt_hash, lock_expires_at)
          SELECT $1, $3, $4, $5, $6, now() + interval '10 minutes'
-         WHERE $2::uuid = (SELECT auth.uid()) AND public.is_tenant_member($1)
+         WHERE $2::uuid = NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid AND public.is_tenant_member($1)
            AND public.has_tenant_role($1, ARRAY['tenant_admin', 'originator', 'analyst'])
          ON CONFLICT (tenant_id, document_version_id, model_name, prompt_hash) DO NOTHING
          RETURNING *`, [tenantId, actorId, input.caseId, input.documentVersionId, input.modelName, input.promptHash],
@@ -84,7 +84,7 @@ export class PostgresExtractionRepository implements ExtractionRepository {
           `INSERT INTO public.extracted_facts
              (id, tenant_id, extraction_run_id, case_id, field_name, raw_value, normalized_value, source_page, confidence, is_critical)
            SELECT $1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8, $9, $10
-           WHERE $11::uuid = (SELECT auth.uid()) AND public.is_tenant_member($2)
+           WHERE $11::uuid = NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid AND public.is_tenant_member($2)
              AND public.has_tenant_role($2, ARRAY['tenant_admin', 'originator', 'analyst'])
            RETURNING *`,
           [id, tenantId, runId, caseId, fact.fieldName, JSON.stringify(rawValue), JSON.stringify(normalizedValue), fact.sourcePage, fact.confidence, CRITICAL_FIELDS.has(fact.fieldName), actorId],
@@ -134,7 +134,7 @@ export class PostgresExtractionRepository implements ExtractionRepository {
   async getFact(tenantId: string, actorId: string, factId: string, tx: TenantTransaction): Promise<ExtractedFact | null> {
     return tx.withBackendRole(async (backend) => {
       const result = await backend.query<FactRow>(
-        `SELECT * FROM public.extracted_facts WHERE tenant_id = $1 AND id = $2 AND $3::uuid = (SELECT auth.uid())`,
+        `SELECT * FROM public.extracted_facts WHERE tenant_id = $1 AND id = $2 AND $3::uuid = NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid`,
         [tenantId, factId, actorId],
       );
       return result.rows[0] ? this.mapFact(result.rows[0]) : null;
@@ -149,7 +149,7 @@ export class PostgresExtractionRepository implements ExtractionRepository {
            normalized_value = CASE WHEN $4::boolean THEN $5::jsonb ELSE normalized_value END,
            review_status = COALESCE($6, review_status),
            is_critical = COALESCE($7::boolean, is_critical), updated_at = now()
-         WHERE tenant_id = $1 AND id = $2 AND $3::uuid = (SELECT auth.uid())
+         WHERE tenant_id = $1 AND id = $2 AND $3::uuid = NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid
          RETURNING *`,
         [tenantId, factId, actorId, input.normalizedValue !== undefined,
           input.normalizedValue === undefined ? null : JSON.stringify(this.valueCipher.encrypt(tenantId, factId, 'normalized_value', input.normalizedValue)),
@@ -164,7 +164,7 @@ export class PostgresExtractionRepository implements ExtractionRepository {
     return tx.withBackendRole(async (backend) => {
       const result = await backend.query<FactRow>(
         `SELECT * FROM public.extracted_facts
-         WHERE tenant_id = $1 AND case_id = $2 AND $3::uuid = (SELECT auth.uid())
+         WHERE tenant_id = $1 AND case_id = $2 AND $3::uuid = NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid
            AND ($4::text IS NULL OR review_status = $4)
          ORDER BY created_at, id`,
         [tenantId, caseId, actorId, reviewStatus ?? null],
@@ -177,7 +177,7 @@ export class PostgresExtractionRepository implements ExtractionRepository {
     await tx.withBackendRole(async (backend) => {
       await backend.query(
         `SELECT id FROM public.extracted_facts
-         WHERE tenant_id = $1 AND case_id = $2 AND $3::uuid = (SELECT auth.uid()) AND is_critical
+         WHERE tenant_id = $1 AND case_id = $2 AND $3::uuid = NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid AND is_critical
          ORDER BY id FOR UPDATE`,
         [tenantId, caseId, actorId],
       );
@@ -188,7 +188,7 @@ export class PostgresExtractionRepository implements ExtractionRepository {
     return tx.withBackendRole(async (backend) => {
       const result = await backend.query<{ count: string }>(
         `SELECT count(*)::text AS count FROM public.extracted_facts
-         WHERE tenant_id = $1 AND case_id = $2 AND $3::uuid = (SELECT auth.uid()) AND is_critical AND review_status = 'conflict'`,
+         WHERE tenant_id = $1 AND case_id = $2 AND $3::uuid = NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid AND is_critical AND review_status = 'conflict'`,
         [tenantId, caseId, actorId],
       );
       return Number(result.rows[0]?.count ?? 0);
@@ -199,7 +199,7 @@ export class PostgresExtractionRepository implements ExtractionRepository {
     await tx.withBackendRole(async (backend) => {
       const result = await backend.query(
         `UPDATE public.extraction_runs SET ${setClause} WHERE tenant_id = $1 AND id = $2
-           AND $3::uuid = (SELECT auth.uid()) AND status IN ('processing', 'retry_wait')`,
+           AND $3::uuid = NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid AND status IN ('processing', 'retry_wait')`,
         [tenantId, runId, actorId, ...extra],
       );
       if (result.rowCount !== 1) throw new ConflictException('Extraction run is no longer active.');

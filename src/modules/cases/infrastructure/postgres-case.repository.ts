@@ -19,7 +19,7 @@ export class PostgresCaseRepository implements CaseRepository {
          WHERE j.tenant_id = c.tenant_id AND j.case_id = c.id
          ORDER BY j.created_at DESC, j.id DESC LIMIT 1
        ) current_job ON true
-       WHERE c.tenant_id = $1 AND $2::uuid = (SELECT auth.uid()) AND c.id = $3 AND c.deleted_at IS NULL`,
+       WHERE c.tenant_id = $1 AND $2::uuid = NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid AND c.id = $3 AND c.deleted_at IS NULL`,
       [tenantId, actorId, caseId],
     );
     return result.rows[0] ? toDomain(result.rows[0]) : null;
@@ -40,7 +40,7 @@ export class PostgresCaseRepository implements CaseRepository {
          WHERE j.tenant_id = c.tenant_id AND j.case_id = c.id
          ORDER BY j.created_at DESC, j.id DESC LIMIT 1
        ) current_job ON true
-       WHERE c.tenant_id = $1 AND $2::uuid = (SELECT auth.uid()) AND c.deleted_at IS NULL ${cursorClause}
+       WHERE c.tenant_id = $1 AND $2::uuid = NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid AND c.deleted_at IS NULL ${cursorClause}
        ORDER BY c.created_at DESC, c.id DESC LIMIT ${limitPlaceholder}`,
       values,
     );
@@ -72,7 +72,7 @@ export class PostgresCaseRepository implements CaseRepository {
     return transaction.withBackendRole(async (backendTransaction) => {
       const result = await backendTransaction.query<CaseRow>(
         `INSERT INTO public.credit_cases (tenant_id, entity_id, case_number, status, currency)
-         SELECT $1, $3, $4, $5, $6 WHERE $2::uuid = (SELECT auth.uid())
+         SELECT $1, $3, $4, $5, $6 WHERE $2::uuid = NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid
          RETURNING id, tenant_id, entity_id, case_number, status, currency, version, created_at, updated_at, deleted_at`,
         [tenantId, actorId, input.entityId, input.caseNumber, input.status, input.currency],
       );
@@ -85,7 +85,7 @@ export class PostgresCaseRepository implements CaseRepository {
     return transaction.withBackendRole(async (backendTransaction) => {
       const result = await backendTransaction.query<CaseRow>(
         `UPDATE public.credit_cases SET status = $5, version = version + 1, updated_at = now()
-         WHERE tenant_id = $1 AND $2::uuid = (SELECT auth.uid()) AND id = $3 AND version = $4 AND deleted_at IS NULL
+         WHERE tenant_id = $1 AND $2::uuid = NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid AND id = $3 AND version = $4 AND deleted_at IS NULL
          RETURNING id, tenant_id, entity_id, case_number, status, currency, version, created_at, updated_at, deleted_at`,
         [tenantId, actorId, caseId, expectedVersion, status],
       );
@@ -98,7 +98,7 @@ export class PostgresCaseRepository implements CaseRepository {
     return transaction.withBackendRole(async (backendTransaction) => {
       const result = await backendTransaction.query<CaseRow>(
         `UPDATE public.credit_cases SET status = 'archived', deleted_at = now(), version = version + 1, updated_at = now()
-         WHERE tenant_id = $1 AND $2::uuid = (SELECT auth.uid()) AND id = $3 AND version = $4 AND deleted_at IS NULL
+         WHERE tenant_id = $1 AND $2::uuid = NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid AND id = $3 AND version = $4 AND deleted_at IS NULL
          RETURNING id, tenant_id, entity_id, case_number, status, currency, version, created_at, updated_at, deleted_at`,
         [tenantId, actorId, caseId, expectedVersion],
       );

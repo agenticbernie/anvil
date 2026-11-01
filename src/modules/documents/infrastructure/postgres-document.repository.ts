@@ -67,7 +67,7 @@ export class PostgresDocumentRepository implements DocumentRepository {
            id, tenant_id, case_id, uploaded_by, object_key, content_type, size_bytes, storage_size_bytes,
            sha256, wrapped_data_key, encryption_nonce, encryption_key_version
          ) SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
-           WHERE $4::uuid = (SELECT auth.uid())
+           WHERE $4::uuid = NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid
          RETURNING id, tenant_id, case_id, uploaded_by, object_key, final_object_key, content_type, size_bytes, storage_size_bytes,
                    sha256, wrapped_data_key, encryption_nonce, encryption_key_version, status`,
         [input.id, tenantId, input.caseId, actorId, input.objectKey, input.contentType, input.sizeBytes,
@@ -83,7 +83,7 @@ export class PostgresDocumentRepository implements DocumentRepository {
       `SELECT id, tenant_id, case_id, uploaded_by, object_key, final_object_key, content_type, size_bytes, storage_size_bytes,
               sha256, wrapped_data_key, encryption_nonce, encryption_key_version, status
        FROM public.documents
-       WHERE tenant_id = $1 AND $2::uuid = (SELECT auth.uid()) AND id = $3 AND deleted_at IS NULL
+       WHERE tenant_id = $1 AND $2::uuid = NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid AND id = $3 AND deleted_at IS NULL
          AND (status <> 'pending_upload' OR reservation_expires_at > now())`,
       [tenantId, actorId, documentId],
     );
@@ -97,7 +97,7 @@ export class PostgresDocumentRepository implements DocumentRepository {
     }>(
       `SELECT id, case_id, content_type, size_bytes, status, created_at, updated_at
        FROM public.documents
-       WHERE tenant_id = $1 AND case_id = $3 AND $2::uuid = (SELECT auth.uid()) AND deleted_at IS NULL
+       WHERE tenant_id = $1 AND case_id = $3 AND $2::uuid = NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid AND deleted_at IS NULL
          AND (status <> 'pending_upload' OR reservation_expires_at > now())
        ORDER BY created_at DESC, id DESC`,
       [tenantId, actorId, caseId],
@@ -119,7 +119,7 @@ export class PostgresDocumentRepository implements DocumentRepository {
     return transaction.withBackendRole(async (tx) => {
       const claimed = await tx.query<{ final_object_key: string }>(
         `UPDATE public.documents SET final_object_key = $4
-         WHERE tenant_id = $1 AND $2::uuid = (SELECT auth.uid()) AND id = $3
+         WHERE tenant_id = $1 AND $2::uuid = NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid AND id = $3
            AND status = 'pending_upload' AND reservation_expires_at > now() AND deleted_at IS NULL
            AND final_object_key IS NULL
          RETURNING final_object_key`,
@@ -129,7 +129,7 @@ export class PostgresDocumentRepository implements DocumentRepository {
 
       const existing = await tx.query<{ final_object_key: string | null }>(
         `SELECT final_object_key FROM public.documents
-         WHERE tenant_id = $1 AND $2::uuid = (SELECT auth.uid()) AND id = $3
+         WHERE tenant_id = $1 AND $2::uuid = NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid AND id = $3
            AND status = 'pending_upload' AND reservation_expires_at > now() AND deleted_at IS NULL
            AND final_object_key IS NOT NULL`,
         [tenantId, actorId, documentId],
@@ -143,7 +143,7 @@ export class PostgresDocumentRepository implements DocumentRepository {
     return transaction.withBackendRole(async (tx) => {
       const result = await tx.query(
         `UPDATE public.documents SET status = 'uploaded', final_object_key = $4, updated_at = now()
-         WHERE tenant_id = $1 AND $2::uuid = (SELECT auth.uid()) AND id = $3
+         WHERE tenant_id = $1 AND $2::uuid = NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid AND id = $3
            AND status = 'pending_upload' AND reservation_expires_at > now() AND deleted_at IS NULL`,
         [tenantId, actorId, documentId, finalObjectKey],
       );
@@ -155,7 +155,7 @@ export class PostgresDocumentRepository implements DocumentRepository {
     await transaction.withBackendRole(async (tx) => {
       const result = await tx.query(
         `UPDATE public.documents SET status = 'processing', updated_at = now()
-         WHERE tenant_id = $1 AND $2::uuid = (SELECT auth.uid()) AND id = $3 AND status IN ('uploaded', 'processing')`,
+         WHERE tenant_id = $1 AND $2::uuid = NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid AND id = $3 AND status IN ('uploaded', 'processing')`,
         [tenantId, actorId, documentId],
       );
       if (result.rowCount !== 1) throw new ConflictException('Document cannot enter processing from its current state.');
@@ -166,7 +166,7 @@ export class PostgresDocumentRepository implements DocumentRepository {
     await transaction.withBackendRole(async (tx) => {
       const result = await tx.query(
         `UPDATE public.documents SET status = 'processed', updated_at = now()
-         WHERE tenant_id = $1 AND $2::uuid = (SELECT auth.uid()) AND id = $3 AND status = 'processing'`,
+         WHERE tenant_id = $1 AND $2::uuid = NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid AND id = $3 AND status = 'processing'`,
         [tenantId, actorId, documentId],
       );
       if (result.rowCount !== 1) throw new ConflictException('Document is not in processing state.');
@@ -177,7 +177,7 @@ export class PostgresDocumentRepository implements DocumentRepository {
     await transaction.withBackendRole(async (tx) => {
       await tx.query(
         `UPDATE public.documents SET status = $4, updated_at = now()
-         WHERE tenant_id = $1 AND $2::uuid = (SELECT auth.uid()) AND id = $3 AND status IN ('uploaded', 'processing')`,
+         WHERE tenant_id = $1 AND $2::uuid = NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid AND id = $3 AND status IN ('uploaded', 'processing')`,
         [tenantId, actorId, documentId, rejected ? 'rejected' : 'failed'],
       );
     });

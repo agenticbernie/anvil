@@ -84,6 +84,7 @@ describe('Phase 2 PostgreSQL integration', () => {
     `);
     await pool.query(readFileSync(resolve(process.cwd(), 'supabase/migrations/0001_init_schema.sql'), 'utf8'));
     await pool.query(readFileSync(resolve(process.cwd(), 'supabase/migrations/20261030120000_add_cases_and_idempotency.sql'), 'utf8'));
+    await pool.query(readFileSync(resolve(process.cwd(), 'supabase/migrations/20261030130000_add_outbox_and_jobs.sql'), 'utf8'));
     await pool.query('INSERT INTO auth.users (id) VALUES ($1), ($2), ($3)', [userA, userB, viewerId]);
     await pool.query("INSERT INTO public.tenants (id, name) VALUES ($1, 'Tenant A'), ($2, 'Tenant B')", [tenantA, tenantB]);
     await pool.query('INSERT INTO public.users (auth_user_id) VALUES ($1), ($2), ($3)', [userA, userB, viewerId]);

@@ -7,7 +7,7 @@ export class PostgresAuditEventRepository implements AuditEventRepository {
     await transaction.withBackendRole(async (backendTransaction) => {
       const result = await backendTransaction.query(
         `INSERT INTO public.audit_events (tenant_id, actor_id, event_type, resource_type, resource_id, metadata)
-         SELECT $1, $2, $3, $4, $5, $6::jsonb WHERE $2::uuid = (SELECT auth.uid())`,
+         SELECT $1, $2, $3, $4, $5, $6::jsonb WHERE $2::uuid = NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid`,
         [tenantId, actorId, event.type, event.resourceType, event.resourceId, JSON.stringify(event.metadata)],
       );
       if (result.rowCount !== 1) throw new ForbiddenException('Actor does not match the authenticated database principal.');

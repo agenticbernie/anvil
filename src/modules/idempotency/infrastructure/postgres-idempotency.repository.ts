@@ -19,7 +19,7 @@ export class PostgresIdempotencyRepository implements IdempotencyRepository {
            SELECT idempotency_key
            FROM public.idempotency_keys
            WHERE tenant_id = $1 AND actor_id = $2
-             AND $2::uuid = (SELECT auth.uid()) AND expires_at <= now()
+             AND $2::uuid = NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid AND expires_at <= now()
            ORDER BY expires_at
            LIMIT 100
            FOR UPDATE SKIP LOCKED
@@ -27,14 +27,14 @@ export class PostgresIdempotencyRepository implements IdempotencyRepository {
          DELETE FROM public.idempotency_keys AS expired
          USING expired_keys
          WHERE expired.tenant_id = $1 AND expired.actor_id = $2
-           AND expired.actor_id = (SELECT auth.uid())
+           AND expired.actor_id = NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid
            AND expired.idempotency_key = expired_keys.idempotency_key`,
         [scope.tenantId, scope.actorId],
       );
 
       const inserted = await backendTransaction.query(
         `INSERT INTO public.idempotency_keys (tenant_id, actor_id, idempotency_key, request_hash, expires_at)
-         SELECT $1, $2, $3, $4, $5 WHERE $2::uuid = (SELECT auth.uid())
+         SELECT $1, $2, $3, $4, $5 WHERE $2::uuid = NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid
          ON CONFLICT (tenant_id, actor_id, idempotency_key) DO NOTHING
          RETURNING idempotency_key`,
         [scope.tenantId, scope.actorId, scope.key, scope.requestHash, expiresAt],
@@ -45,7 +45,7 @@ export class PostgresIdempotencyRepository implements IdempotencyRepository {
         `SELECT request_hash, response_status, response_body, expires_at
          FROM public.idempotency_keys
          WHERE tenant_id = $1 AND actor_id = $2 AND idempotency_key = $3
-           AND actor_id = (SELECT auth.uid())
+           AND actor_id = NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid
          FOR UPDATE`,
         [scope.tenantId, scope.actorId, scope.key],
       );
@@ -57,7 +57,7 @@ export class PostgresIdempotencyRepository implements IdempotencyRepository {
           `UPDATE public.idempotency_keys
            SET request_hash = $4, response_status = NULL, response_body = NULL, created_at = now(), expires_at = $5
            WHERE tenant_id = $1 AND actor_id = $2 AND idempotency_key = $3
-             AND actor_id = (SELECT auth.uid()) AND expires_at <= now()`,
+             AND actor_id = NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid AND expires_at <= now()`,
           [scope.tenantId, scope.actorId, scope.key, scope.requestHash, expiresAt],
         );
         if (renewed.rowCount !== 1) throw new InternalServerErrorException('Expired idempotency record could not be renewed.');
@@ -87,7 +87,7 @@ export class PostgresIdempotencyRepository implements IdempotencyRepository {
       const result = await backendTransaction.query(
         `UPDATE public.idempotency_keys SET response_status = $5, response_body = $6::jsonb
          WHERE tenant_id = $1 AND actor_id = $2 AND idempotency_key = $3 AND request_hash = $4
-           AND actor_id = (SELECT auth.uid()) AND response_status IS NULL AND expires_at > now()`,
+           AND actor_id = NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid AND response_status IS NULL AND expires_at > now()`,
         [scope.tenantId, scope.actorId, scope.key, scope.requestHash, status, JSON.stringify(encryptedBody)],
       );
       if (result.rowCount !== 1) throw new InternalServerErrorException('Idempotency response could not be committed.');
@@ -99,7 +99,7 @@ export class PostgresIdempotencyRepository implements IdempotencyRepository {
       await backendTransaction.query(
         `DELETE FROM public.idempotency_keys
          WHERE tenant_id = $1 AND actor_id = $2 AND idempotency_key = $3 AND request_hash = $4
-           AND actor_id = (SELECT auth.uid()) AND response_status IS NULL`,
+           AND actor_id = NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid AND response_status IS NULL`,
         [scope.tenantId, scope.actorId, scope.key, scope.requestHash],
       );
     }));
