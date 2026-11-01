@@ -1,13 +1,15 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
-import { createRemoteJWKSet, jwtVerify } from 'jose';
+import { createRemoteJWKSet, customFetch as joseCustomFetch, jwtVerify } from 'jose';
+import type { FetchImplementation } from 'jose';
 import { Strategy } from 'passport-custom';
-import type { Request as ExpressRequest } from 'express'; // 🔥 ĐỔI TÊN ĐỂ TRÁNH TRÙNG VỚI GLOBAL REQUEST
+import type { Request as ExpressRequest } from 'express';
 import type { AuthenticatedUser } from './tenant.types.js';
 
 @Injectable()
 export class SupabaseJwtStrategy extends PassportStrategy(Strategy, 'jwt') {
+  private readonly logger = new Logger(SupabaseJwtStrategy.name);
   private readonly jwks: ReturnType<typeof createRemoteJWKSet>;
   private readonly issuer: string;
 
@@ -17,22 +19,32 @@ export class SupabaseJwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     const supabaseUrl = config.get<string>('SUPABASE_URL') ?? process.env.SUPABASE_URL ?? '';
     const anonKey = config.get<string>('SUPABASE_ANON_KEY') ?? process.env.SUPABASE_ANON_KEY ?? '';
 
-    if (!jwksUrl || !supabaseUrl) {
-      throw new Error('SUPABASE_JWKS_URL and SUPABASE_URL are required for JWT verification.');
+    if (!jwksUrl || !supabaseUrl || !anonKey) {
+      throw new Error('SUPABASE_JWKS_URL, SUPABASE_URL, and SUPABASE_ANON_KEY are required for JWT verification.');
     }
 
-    const customFetch = (url: string | URL, init?: RequestInit) => {
-      return fetch(url, {
-        ...init,
-        headers: {
-          ...(init?.headers as Record<string, string> || {}),
-          apikey: anonKey,
-        },
-      });
+    const customFetch: FetchImplementation = async (url, init) => {
+      const endpoint = new URL(url);
+      const safeEndpoint = `${endpoint.origin}${endpoint.pathname}`;
+      const headers = new Headers(init.headers);
+      headers.set('apikey', anonKey);
+      headers.set('Authorization', `Bearer ${anonKey}`);
+      const startedAt = Date.now();
+      this.logger.log({ event: 'jwks_fetch_started', endpoint: safeEndpoint });
+      try {
+        const response = await fetch(url, { ...init, headers });
+        const details = { event: 'jwks_fetch_completed', endpoint: safeEndpoint, status: response.status, durationMs: Date.now() - startedAt };
+        if (response.ok) this.logger.log(details);
+        else this.logger.warn(details);
+        return response;
+      } catch (error) {
+        this.logger.error({ event: 'jwks_fetch_failed', endpoint: safeEndpoint, durationMs: Date.now() - startedAt, errorName: error instanceof Error ? error.name : 'unknown' });
+        throw error;
+      }
     };
 
     this.jwks = createRemoteJWKSet(new URL(jwksUrl), {
-      fetch: customFetch,
+      [joseCustomFetch]: customFetch,
     } as any);
 
     this.issuer = new URL('/auth/v1', `${supabaseUrl.replace(/\/$/, '')}/`).toString();
@@ -58,12 +70,9 @@ export class SupabaseJwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       const appMetadata = isRecord(payload.app_metadata) ? payload.app_metadata : {};
       return { id: payload.sub, appMetadata };
 
-    } catch (error: any) {
-      console.error('❌ [SupabaseJwtStrategy] JWT Verification Failed:', {
-        message: error.message,
-        code: error.code,
-      });
-      throw new UnauthorizedException(`Bearer token is invalid or expired. Detail: ${error.message}`);
+    } catch (error: unknown) {
+      this.logger.warn({ event: 'jwt_verification_failed', errorName: error instanceof Error ? error.name : 'unknown' });
+      throw new UnauthorizedException('Bearer token is invalid or expired.');
     }
   }
 }

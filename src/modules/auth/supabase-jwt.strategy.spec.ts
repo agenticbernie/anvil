@@ -7,6 +7,7 @@ import { exportJWK, generateKeyPair, SignJWT } from 'jose';
 import { SupabaseJwtStrategy } from './supabase-jwt.strategy.js';
 
 const userId = '00000000-0000-4000-8000-000000000001';
+const anonKey = 'test-anon-key';
 const cleanups: Array<() => Promise<void>> = [];
 
 afterEach(async () => {
@@ -15,10 +16,11 @@ afterEach(async () => {
 
 describe('SupabaseJwtStrategy', () => {
   it('verifies the Supabase signature, issuer, audience and authenticated role', async () => {
-    const { strategy, sign } = await fixture();
+    const { strategy, sign, requests } = await fixture();
     const token = await sign({ role: 'authenticated', app_metadata: { tenant_id: '00000000-0000-4000-8000-000000000002' } });
     await expect(strategy.validate({ headers: { authorization: `Bearer ${token}` } } as never))
       .resolves.toEqual({ id: userId, appMetadata: { tenant_id: '00000000-0000-4000-8000-000000000002' } });
+    expect(requests).toEqual([{ apikey: anonKey, authorization: `Bearer ${anonKey}` }]);
   });
 
   it('does not use mutable user_metadata as a tenant authorization claim', async () => {
@@ -40,13 +42,29 @@ describe('SupabaseJwtStrategy', () => {
     await expect(strategy.validate({ headers: { authorization: 'Basic abc' } } as never))
       .rejects.toBeInstanceOf(UnauthorizedException);
   });
+
+  it('rejects a JWKS gateway error without exposing its response body', async () => {
+    const { strategy, sign } = await fixture(true);
+    const token = await sign({ role: 'authenticated' });
+    await expect(strategy.validate({ headers: { authorization: `Bearer ${token}` } } as never))
+      .rejects.toThrow('Bearer token is invalid or expired.');
+  });
 });
 
-async function fixture() {
+async function fixture(rejectJwks = false) {
   const { privateKey, publicKey } = await generateKeyPair('ES256');
   const exported = await exportJWK(publicKey);
   const key = { ...exported, kid: 'test-key', alg: 'ES256', use: 'sig' };
-  const server = createServer((_request, response) => {
+  const requests: Array<{ apikey: string | undefined; authorization: string | undefined }> = [];
+  const server = createServer((request, response) => {
+    const apikey = request.headers.apikey as string | undefined;
+    const authorization = request.headers.authorization;
+    requests.push({ apikey, authorization });
+    if (rejectJwks || apikey !== anonKey || authorization !== `Bearer ${anonKey}`) {
+      response.writeHead(403);
+      response.end('private gateway response');
+      return;
+    }
     response.writeHead(200, { 'content-type': 'application/json' });
     response.end(JSON.stringify({ keys: [key] }));
   });
@@ -57,6 +75,7 @@ async function fixture() {
   const config = new ConfigService({
     SUPABASE_URL: 'https://example.supabase.co',
     SUPABASE_JWKS_URL: `http://127.0.0.1:${address.port}/.well-known/jwks.json`,
+    SUPABASE_ANON_KEY: anonKey,
   });
   const strategy = new SupabaseJwtStrategy(config);
   const sign = (claims: Record<string, unknown>) => new SignJWT(claims)
@@ -68,5 +87,5 @@ async function fixture() {
     .setExpirationTime('5m')
     .sign(privateKey);
   cleanups.push(() => new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())));
-  return { strategy, sign };
+  return { strategy, sign, requests };
 }
