@@ -1,26 +1,40 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
-import { jwtVerify } from 'jose';
+import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { Strategy } from 'passport-custom';
 import type { Request } from 'express';
 import type { AuthenticatedUser } from './tenant.types.js';
 
 @Injectable()
 export class SupabaseJwtStrategy extends PassportStrategy(Strategy, 'jwt') {
-  private readonly secret: Uint8Array;
+  private readonly jwks: ReturnType<typeof createRemoteJWKSet>;
   private readonly issuer: string;
 
   constructor(config: ConfigService) {
     super();
-    const jwtSecret = config.get<string>('SUPABASE_JWT_SECRET') ?? process.env.SUPABASE_JWT_SECRET ?? '';
+    const jwksUrl = config.get<string>('SUPABASE_JWKS_URL') ?? process.env.SUPABASE_JWKS_URL ?? '';
     const supabaseUrl = config.get<string>('SUPABASE_URL') ?? process.env.SUPABASE_URL ?? '';
+    const anonKey = config.get<string>('SUPABASE_ANON_KEY') ?? process.env.SUPABASE_ANON_KEY ?? '';
 
-    if (!jwtSecret) {
-      throw new Error('SUPABASE_JWT_SECRET is required for JWT verification.');
+    if (!jwksUrl || !supabaseUrl) {
+      throw new Error('SUPABASE_JWKS_URL and SUPABASE_URL are required for JWT verification.');
     }
 
-    this.secret = new TextEncoder().encode(jwtSecret);
+    const customFetch = (url: string | URL | Request, init?: RequestInit) => {
+      return fetch(url, {
+        ...init,
+        headers: {
+          ...(init?.headers || {}),
+                   'apikey': anonKey,
+        },
+      });
+    };
+
+    this.jwks = createRemoteJWKSet(new URL(jwksUrl), {
+      fetch: customFetch,
+    });
+
     this.issuer = new URL('/auth/v1', `${supabaseUrl.replace(/\/$/, '')}/`).toString();
   }
 
@@ -30,10 +44,10 @@ export class SupabaseJwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     if (!match?.[1]) throw new UnauthorizedException('Bearer token is required.');
 
     try {
-      const { payload } = await jwtVerify(match[1], this.secret, {
+      const { payload } = await jwtVerify(match[1], this.jwks, {
         issuer: this.issuer,
         audience: 'authenticated',
-        algorithms: ['HS256', 'RS256'],
+        algorithms: ['ES256', 'RS256', 'HS256'],
         clockTolerance: 10,
       });
 
@@ -49,7 +63,7 @@ export class SupabaseJwtStrategy extends PassportStrategy(Strategy, 'jwt') {
         message: error.message,
         code: error.code,
       });
-      throw new UnauthorizedException('Bearer token is invalid or expired.');
+      throw new UnauthorizedException(`Bearer token is invalid or expired. Detail: ${error.message}`);
     }
   }
 }
