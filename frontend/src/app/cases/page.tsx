@@ -7,6 +7,7 @@ import { Button } from "@astryxdesign/core/Button";
 import { useToast } from "@astryxdesign/core/Toast";
 import { useCases } from "@/hooks/useCases";
 import { CreateCaseModal } from "@/components/cases/CreateCaseModal";
+import { CreateEntityModal } from "@/components/cases/CreateEntityModal";
 import { ApiError, type CreditCase } from "@/lib/api/client";
 import { useAuthTenant } from "@/lib/auth/tenant-context";
 
@@ -30,6 +31,9 @@ export default function CasesPage() {
   const { credentials, status: authStatus, message: authMessage } = useAuthTenant();
   const toast = useToast();
   const [cursorStack, setCursorStack] = useState<Array<string | undefined>>([undefined]);
+  const [isCreateCaseOpen, setIsCreateCaseOpen] = useState(false);
+  const [isCreateEntityOpen, setIsCreateEntityOpen] = useState(false);
+  const [prefilledEntityId, setPrefilledEntityId] = useState("");
   const cursor = cursorStack[cursorStack.length - 1];
   const query = useCases({ limit: pageSize, ...(cursor ? { cursor } : {}) });
 
@@ -75,7 +79,30 @@ export default function CasesPage() {
           <div className="flex items-center gap-3">
             {query.isFetching && <span className="text-xs text-slate-500">Refreshing…</span>}
             <Button label="Refresh" variant="secondary" size="sm" onClick={() => void query.refetch()} isDisabled={!credentials || query.isFetching} />
-            <CreateCaseModal onCreated={() => setCursorStack([undefined])} />
+            <button
+              type="button"
+              onClick={() => setIsCreateEntityOpen(true)}
+              disabled={!credentials}
+              className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <svg viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2m12-13a4 4 0 1 1-8 0 4 4 0 0 1 8 0Zm3 1v6m-3-3h6" />
+              </svg>
+              Create Entity
+            </button>
+            <Button label="Create Case" variant="primary" size="sm" onClick={() => setIsCreateCaseOpen(true)} isDisabled={!credentials} />
+            <CreateCaseModal
+              isOpen={isCreateCaseOpen}
+              initialEntityId={prefilledEntityId}
+              onOpenChange={setIsCreateCaseOpen}
+              onCreated={() => { setCursorStack([undefined]); setPrefilledEntityId(""); }}
+              onRequestCreateEntity={() => setIsCreateEntityOpen(true)}
+            />
+            <CreateEntityModal
+              isOpen={isCreateEntityOpen}
+              onOpenChange={setIsCreateEntityOpen}
+              onCreated={(entity) => { setPrefilledEntityId(entity.id); setIsCreateCaseOpen(true); }}
+            />
           </div>
         </div>
 

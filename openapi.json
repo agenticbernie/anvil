@@ -921,6 +921,183 @@
         ]
       }
     },
+    "/v1/entities": {
+      "post": {
+        "description": "Creates an individual or business entity. The legal name is encrypted before persistence, and tenant scope is derived from the authenticated x-tenant-id context.",
+        "operationId": "EntitiesController_create",
+        "parameters": [
+          {
+            "name": "x-tenant-id",
+            "in": "header",
+            "description": "Tenant selector validated against active membership.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "00000000-0000-4000-8000-000000000001"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "Entity legal name and type. Tenant ID is never accepted in the request body.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateEntityDto"
+              },
+              "examples": {
+                "individual": {
+                  "summary": "Create an individual",
+                  "value": {
+                    "name": "Avery Chen",
+                    "type": "individual"
+                  }
+                },
+                "business": {
+                  "summary": "Create a business",
+                  "value": {
+                    "name": "Northstar Components LLC",
+                    "type": "business"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Entity created. Sensitive legal name is not returned.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntityResponseDto"
+                },
+                "example": {
+                  "id": "00000000-0000-4000-8000-000000000031",
+                  "tenantId": "00000000-0000-4000-8000-000000000001",
+                  "entityType": "individual",
+                  "createdAt": "2026-11-01T00:00:00.000Z"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Entity name or type is invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 400,
+                  "message": "Request validation failed.",
+                  "error": "Bad Request"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized: Authentication is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 401,
+                  "message": "Authentication is required.",
+                  "error": "Unauthorized"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Active tenant membership or entity creation role is required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 403,
+                  "message": "The authenticated user is not authorized.",
+                  "error": "Forbidden"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found: The requested resource was not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 404,
+                  "message": "The requested resource was not found.",
+                  "error": "Not Found"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict: The request conflicts with the current resource state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 409,
+                  "message": "The request conflicts with the current resource state.",
+                  "error": "Conflict"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity: The request is valid JSON but cannot be processed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 422,
+                  "message": "The request is valid JSON but cannot be processed.",
+                  "error": "Unprocessable Entity"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error: An unexpected server error occurred.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                },
+                "example": {
+                  "statusCode": 500,
+                  "message": "An unexpected server error occurred.",
+                  "error": "Internal Server Error"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Create a tenant-scoped entity.",
+        "tags": [
+          "Entities"
+        ]
+      }
+    },
     "/v1/cases/{caseId}/documents": {
       "get": {
         "description": "Returns safe document metadata for the selected tenant and case. Storage keys, hashes, encryption material, and upload credentials are never included.",
@@ -3515,6 +3692,58 @@
         },
         "required": [
           "version"
+        ]
+      },
+      "CreateEntityDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "description": "Legal name. Encrypted before persistence."
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "individual",
+              "business"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "type"
+        ]
+      },
+      "EntityResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "tenantId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "entityType": {
+            "type": "string",
+            "enum": [
+              "individual",
+              "business"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "tenantId",
+          "entityType",
+          "createdAt"
         ]
       },
       "DocumentListItemResponseDto": {

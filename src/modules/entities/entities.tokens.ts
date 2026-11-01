@@ -1,0 +1,1 @@
+export const ENTITY_REPOSITORY = Symbol('ENTITY_REPOSITORY');

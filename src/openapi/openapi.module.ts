@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { CasesController } from '../modules/cases/api/cases.controller.js';
 import { CaseService } from '../modules/cases/application/case.service.js';
+import { EntitiesController } from '../modules/entities/api/entities.controller.js';
+import { EntityService } from '../modules/entities/application/entity.service.js';
 import { CaseDocumentsController, DocumentsController } from '../modules/documents/api/documents.controller.js';
 import { DocumentService } from '../modules/documents/application/document.service.js';
 import { ExtractionService } from '../modules/extraction/application/extraction.service.js';
@@ -21,9 +23,10 @@ import { ClerkTenantMappingController } from '../modules/tenants/api/clerk-tenan
 import { TenantMappingService } from '../modules/tenants/services/tenant-mapping.service.js';
 
 @Module({
-  controllers: [CasesController, CaseDocumentsController, DocumentsController, FactsController, MemosController, JobsController, HealthController, ClerkTenantMappingController],
+  controllers: [CasesController, EntitiesController, CaseDocumentsController, DocumentsController, FactsController, MemosController, JobsController, HealthController, ClerkTenantMappingController],
   providers: [
     { provide: CaseService, useValue: {} },
+    { provide: EntityService, useValue: {} },
     { provide: DocumentService, useValue: {} },
     { provide: ExtractionService, useValue: {} },
     { provide: MemoService, useValue: {} },

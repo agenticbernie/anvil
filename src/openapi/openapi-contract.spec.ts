@@ -5,6 +5,7 @@ import { beforeAll, describe, expect, it } from '@jest/globals';
 import { createOpenApiDocument } from './openapi-document.js';
 
 const businessOperations = [
+  ['post', '/v1/entities', true],
   ['post', '/v1/cases', true],
   ['get', '/v1/cases', false],
   ['get', '/v1/cases/{id}', false],
@@ -131,7 +132,7 @@ describe('generated OpenAPI contract', () => {
 
   it('uses stable named DTO components for generated client types', () => {
     expect(Object.keys(document.components?.schemas ?? {})).toEqual(expect.arrayContaining([
-      'ApiErrorResponseDto', 'CreateCaseDto', 'CreditCaseResponseDto', 'UpdateFactDto', 'MemoVersionResponseDto',
+      'ApiErrorResponseDto', 'CreateCaseDto', 'CreateEntityDto', 'EntityResponseDto', 'CreditCaseResponseDto', 'UpdateFactDto', 'MemoVersionResponseDto',
     ]));
   });
 });

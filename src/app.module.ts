@@ -15,6 +15,7 @@ import { AuditModule } from './modules/audit/audit.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
 import { CasesModule } from './modules/cases/cases.module.js';
 import { DocumentsModule } from './modules/documents/documents.module.js';
+import { EntitiesModule } from './modules/entities/entities.module.js';
 import { ExtractionModule } from './modules/extraction/extraction.module.js';
 import { HealthModule } from './modules/health/health.module.js';
 import { IdempotencyModule } from './modules/idempotency/idempotency.module.js';
@@ -43,6 +44,7 @@ import { ClerkWebhooksModule } from './modules/webhooks/clerk/clerk-webhooks.mod
     TenantsModule,
     ClerkWebhooksModule,
     CasesModule,
+    EntitiesModule,
     DocumentsModule,
     ExtractionModule,
     MemosModule,

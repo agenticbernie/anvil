@@ -72,6 +72,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/entities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create a tenant-scoped entity.
+         * @description Creates an individual or business entity. The legal name is encrypted before persistence, and tenant scope is derived from the authenticated x-tenant-id context.
+         */
+        post: operations["EntitiesController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/cases/{caseId}/documents": {
         parameters: {
             query?: never;
@@ -439,6 +459,22 @@ export interface components {
         ArchiveCaseDto: {
             /** @description Expected case version for optimistic concurrency. */
             version: number;
+        };
+        CreateEntityDto: {
+            /** @description Legal name. Encrypted before persistence. */
+            name: string;
+            /** @enum {string} */
+            type: "individual" | "business";
+        };
+        EntityResponseDto: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            tenantId: string;
+            /** @enum {string} */
+            entityType: "individual" | "business";
+            /** Format: date-time */
+            createdAt: string;
         };
         DocumentListItemResponseDto: {
             /** Format: uuid */
@@ -1365,6 +1401,154 @@ export interface operations {
                 };
             };
             /** @description Case version is stale or idempotency key conflicts. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "statusCode": 409,
+                     *       "message": "The request conflicts with the current resource state.",
+                     *       "error": "Conflict"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ApiErrorResponseDto"];
+                };
+            };
+            /** @description Unprocessable Entity: The request is valid JSON but cannot be processed. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "statusCode": 422,
+                     *       "message": "The request is valid JSON but cannot be processed.",
+                     *       "error": "Unprocessable Entity"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ApiErrorResponseDto"];
+                };
+            };
+            /** @description Internal Server Error: An unexpected server error occurred. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "statusCode": 500,
+                     *       "message": "An unexpected server error occurred.",
+                     *       "error": "Internal Server Error"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ApiErrorResponseDto"];
+                };
+            };
+        };
+    };
+    EntitiesController_create: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Tenant selector validated against active membership. */
+                "x-tenant-id": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Entity legal name and type. Tenant ID is never accepted in the request body. */
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateEntityDto"];
+            };
+        };
+        responses: {
+            /** @description Entity created. Sensitive legal name is not returned. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "id": "00000000-0000-4000-8000-000000000031",
+                     *       "tenantId": "00000000-0000-4000-8000-000000000001",
+                     *       "entityType": "individual",
+                     *       "createdAt": "2026-11-01T00:00:00.000Z"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["EntityResponseDto"];
+                };
+            };
+            /** @description Entity name or type is invalid. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "statusCode": 400,
+                     *       "message": "Request validation failed.",
+                     *       "error": "Bad Request"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ApiErrorResponseDto"];
+                };
+            };
+            /** @description Unauthorized: Authentication is required. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "statusCode": 401,
+                     *       "message": "Authentication is required.",
+                     *       "error": "Unauthorized"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ApiErrorResponseDto"];
+                };
+            };
+            /** @description Active tenant membership or entity creation role is required. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "statusCode": 403,
+                     *       "message": "The authenticated user is not authorized.",
+                     *       "error": "Forbidden"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ApiErrorResponseDto"];
+                };
+            };
+            /** @description Not Found: The requested resource was not found. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "statusCode": 404,
+                     *       "message": "The requested resource was not found.",
+                     *       "error": "Not Found"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["ApiErrorResponseDto"];
+                };
+            };
+            /** @description Conflict: The request conflicts with the current resource state. */
             409: {
                 headers: {
                     [name: string]: unknown;

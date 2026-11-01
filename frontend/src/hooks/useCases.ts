@@ -7,6 +7,7 @@ import {
   type CaseFacts,
   type CaseMemoSummary,
   type CreateCaseRequest,
+  type CreateEntityRequest,
   type FactReviewStatus,
   type ApproveMemoRequest,
   type UpdateFactRequest,
@@ -41,6 +42,17 @@ export function useCreateCase() {
         queryKey: ["cases", credentials.tenantId, credentials.sessionRevision],
         refetchType: "all",
       });
+    },
+    gcTime: 0,
+  });
+}
+
+export function useCreateEntity() {
+  const { credentials } = useAuthTenant();
+  return useMutation({
+    mutationFn: (body: CreateEntityRequest) => {
+      if (!credentials) throw new Error("Connect an API session before creating an entity.");
+      return anvilApi.EntitiesController_create(credentials, body);
     },
     gcTime: 0,
   });

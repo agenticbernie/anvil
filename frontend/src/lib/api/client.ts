@@ -8,6 +8,8 @@ export type CasePage = paths["/v1/cases"]["get"]["responses"]["200"]["content"][
 export type CaseDetail = paths["/v1/cases/{id}"]["get"]["responses"]["200"]["content"]["application/json"];
 export type CreateCaseRequest = components["schemas"]["CreateCaseDto"];
 export type CreatedCase = paths["/v1/cases"]["post"]["responses"]["201"]["content"]["application/json"];
+export type CreateEntityRequest = components["schemas"]["CreateEntityDto"];
+export type CreatedEntity = paths["/v1/entities"]["post"]["responses"]["201"]["content"]["application/json"];
 export type CaseDocuments = paths["/v1/cases/{caseId}/documents"]["get"]["responses"]["200"]["content"]["application/json"];
 export type CaseDocument = CaseDocuments["items"][number];
 export type CaseFacts = paths["/v1/cases/{caseId}/facts"]["get"]["responses"]["200"]["content"]["application/json"];
@@ -133,6 +135,13 @@ export const anvilApi = {
       { method: "POST", body: JSON.stringify(body) },
       idempotencyKey,
     );
+  },
+
+  EntitiesController_create(credentials: ApiCredentials, body: CreateEntityRequest) {
+    return requestJson<CreatedEntity>("/v1/entities", credentials, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
   },
 
   CasesController_findOne(credentials: ApiCredentials, id: string, signal?: AbortSignal) {

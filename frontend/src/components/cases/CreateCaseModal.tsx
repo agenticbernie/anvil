@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Button } from "@astryxdesign/core/Button";
 import { useToast } from "@astryxdesign/core/Toast";
 import { useCreateCase } from "@/hooks/useCases";
@@ -12,17 +12,32 @@ function safeError(error: unknown) {
   return "Case creation failed. Check the values and current tenant, then retry.";
 }
 
-export function CreateCaseModal({ onCreated }: { onCreated: () => void }) {
+export function CreateCaseModal({
+  isOpen,
+  initialEntityId,
+  onOpenChange,
+  onCreated,
+  onRequestCreateEntity,
+}: {
+  isOpen: boolean;
+  initialEntityId: string;
+  onOpenChange: (open: boolean) => void;
+  onCreated: () => void;
+  onRequestCreateEntity: () => void;
+}) {
   const { credentials } = useAuthTenant();
   const tenantId = useTenantId();
   const createCase = useCreateCase();
   const toast = useToast();
-  const [isOpen, setIsOpen] = useState(false);
   const [entityId, setEntityId] = useState("");
   const [currency, setCurrency] = useState("USD");
   const [error, setError] = useState("");
   // Reuse the key for an identical retry; a changed payload is a new user intent.
   const idempotency = useRef<{ fingerprint: string; key: string } | null>(null);
+
+  useEffect(() => {
+    if (isOpen && initialEntityId) setEntityId(initialEntityId);
+  }, [initialEntityId, isOpen]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -44,7 +59,7 @@ export function CreateCaseModal({ onCreated }: { onCreated: () => void }) {
       createCase.reset();
       setEntityId("");
       setCurrency("USD");
-      setIsOpen(false);
+      onOpenChange(false);
       onCreated();
       toast({ body: "Draft case created", uniqueID: "case-created" });
     } catch (cause) {
@@ -56,7 +71,6 @@ export function CreateCaseModal({ onCreated }: { onCreated: () => void }) {
 
   return (
     <>
-      <Button label="Create Case" variant="primary" size="sm" onClick={() => setIsOpen(true)} isDisabled={!credentials} />
       {isOpen && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/45 p-4">
           <section role="dialog" aria-modal="true" aria-labelledby="create-case-title" className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl md:p-7">
@@ -65,9 +79,15 @@ export function CreateCaseModal({ onCreated }: { onCreated: () => void }) {
                 <p className="eyebrow text-[10px] font-semibold text-emerald-800">New underwriting work</p>
                 <h2 id="create-case-title" className="mt-2 text-xl font-semibold text-slate-950">Create a credit case</h2>
               </div>
-              <button type="button" aria-label="Close create case dialog" onClick={() => setIsOpen(false)} disabled={createCase.isPending} className="rounded-md px-2 py-1 text-xl text-slate-400 hover:bg-slate-100 disabled:opacity-40">×</button>
+              <button type="button" aria-label="Close create case dialog" onClick={() => onOpenChange(false)} disabled={createCase.isPending} className="rounded-md px-2 py-1 text-xl text-slate-400 hover:bg-slate-100 disabled:opacity-40">×</button>
             </div>
             <p className="mt-3 text-sm leading-6 text-slate-600">The API creates new cases as drafts. Provide an existing entity and a three-character currency code.</p>
+            <p className="mt-2 text-sm text-slate-600">
+              Need an entity first?{" "}
+              <button type="button" className="font-semibold text-emerald-800 underline underline-offset-4" onClick={() => { onOpenChange(false); onRequestCreateEntity(); }}>
+                Create new entity
+              </button>
+            </p>
             <form onSubmit={submit} className="mt-5 space-y-4">
               <label className="grid gap-2 text-sm font-medium text-slate-700">
                 Entity ID
@@ -95,7 +115,7 @@ export function CreateCaseModal({ onCreated }: { onCreated: () => void }) {
               </label>
               {error && <p className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-800" role="alert">{error}</p>}
               <div className="flex justify-end gap-2 pt-2">
-                <Button label="Cancel" variant="ghost" size="sm" onClick={() => setIsOpen(false)} isDisabled={createCase.isPending} />
+                <Button label="Cancel" variant="ghost" size="sm" onClick={() => onOpenChange(false)} isDisabled={createCase.isPending} />
                 <Button label="Create draft" variant="primary" size="sm" type="submit" isDisabled={createCase.isPending || !tenantId} isLoading={createCase.isPending} />
               </div>
             </form>
