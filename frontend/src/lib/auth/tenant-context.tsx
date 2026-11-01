@@ -86,7 +86,8 @@ export function AuthTenantProvider({ children }: { children: ReactNode }) {
     }
 
     const promise = (async (): Promise<CachedToken> => {
-      const clerkToken = await getClerkToken.current();
+      const clerkToken = await getClerkToken.current({ template: 'supabase' });
+
       if (!clerkToken) throw new Error("Clerk session token is unavailable.");
       const exchanged = await exchangeClerkTokenForSupabaseToken(clerkToken);
       return { scope, token: exchanged.token, expiresAt: exchanged.expiresAt };
