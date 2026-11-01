@@ -21,7 +21,7 @@ export class PostgresEntityRepository implements EntityRepository {
         `INSERT INTO public.entities
            (id, tenant_id, legal_name_ciphertext, legal_name_nonce, legal_name_key_version, legal_name_blind_index, entity_type)
          SELECT $1, $2, $4, $5, $6, $7, $8
-         WHERE $3::uuid = (SELECT auth.uid())
+         WHERE $3::uuid IS NOT NULL
            AND public.is_tenant_member($2)
            AND public.has_tenant_role($2, ARRAY['tenant_admin', 'originator'])
          RETURNING id, tenant_id, entity_type, created_at`,
