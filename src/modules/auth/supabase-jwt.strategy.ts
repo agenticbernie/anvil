@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { Strategy } from 'passport-custom';
-import type { Request } from 'express';
+import type { Request as ExpressRequest } from 'express'; // 🔥 ĐỔI TÊN ĐỂ TRÁNH TRÙNG VỚI GLOBAL REQUEST
 import type { AuthenticatedUser } from './tenant.types.js';
 
 @Injectable()
@@ -21,24 +21,24 @@ export class SupabaseJwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       throw new Error('SUPABASE_JWKS_URL and SUPABASE_URL are required for JWT verification.');
     }
 
-    const customFetch = (url: string | URL | Request, init?: RequestInit) => {
+    const customFetch = (url: string | URL, init?: RequestInit) => {
       return fetch(url, {
         ...init,
         headers: {
-          ...(init?.headers || {}),
+          ...(init?.headers as Record<string, string> || {}),
                    'apikey': anonKey,
         },
       });
     };
 
     this.jwks = createRemoteJWKSet(new URL(jwksUrl), {
-      fetch: customFetch,
+      fetch: customFetch as typeof fetch,
     });
 
     this.issuer = new URL('/auth/v1', `${supabaseUrl.replace(/\/$/, '')}/`).toString();
   }
 
-  async validate(request: Request): Promise<AuthenticatedUser> {
+  async validate(request: ExpressRequest): Promise<AuthenticatedUser> {
     const authorization = request.headers.authorization;
     const match = authorization?.match(/^Bearer\s+([^\s]+)$/i);
     if (!match?.[1]) throw new UnauthorizedException('Bearer token is required.');
