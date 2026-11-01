@@ -15,6 +15,7 @@ import { createDatabaseSslOptions } from './database-ssl-options.js';
       useFactory: (config: ConfigService) => new Pool({
         connectionString: config.get<string>('database.url') || undefined,
         max: config.get<number>('database.poolMax', 5),
+        connectionTimeoutMillis: 5_000,
         ssl: createDatabaseSslOptions(
           config.get<boolean>('database.ssl', true),
           config.get<string>('database.url'),

@@ -40,7 +40,7 @@ interface ExchangeState {
 
 const AuthTenantContext = createContext<AuthTenantContextValue | null>(null);
 const TENANT_REQUIRED_MESSAGE = "Select a Clerk organization to load its Anvil tenant.";
-const TENANT_PROVISIONING_MESSAGE = "This organization is still being provisioned. Refresh in a moment or contact your administrator.";
+const TENANT_PROVISIONING_MESSAGE = "Đang đồng bộ tổ chức của bạn, vui lòng chờ vài giây hoặc refresh trang.";
 const EXCHANGE_ERROR_MESSAGE = "Sign-in could not connect to Supabase. Check the custom OIDC provider settings.";
 const MAPPING_ERROR_MESSAGE = "The organization could not be connected to Anvil. Try again later.";
 
@@ -57,12 +57,17 @@ export function AuthTenantProvider({ children }: { children: ReactNode }) {
   const tokenCache = useRef<CachedToken | null>(null);
   const exchangeFlight = useRef<TokenExchangeFlight | null>(null);
   const lastScope = useRef<string | null>(null);
+  const lastLoggedMappingError = useRef<string | null>(null);
   const currentScope = useRef<string | null>(null);
   const getClerkToken = useRef(getToken);
   getClerkToken.current = getToken;
 
   const claimTenantId = isLoaded && isSignedIn ? resolveTenantId(sessionClaims, orgId) : null;
-  const organizationId = organizationLoaded ? organization?.id ?? orgId : null;
+  const organizationId = organization?.id ?? orgId ?? null;
+  const developmentTenantId = process.env.NODE_ENV === "development"
+    && isUuid(process.env.NEXT_PUBLIC_DEV_TENANT_ID)
+    ? process.env.NEXT_PUBLIC_DEV_TENANT_ID
+    : null;
   const scope = isLoaded && isSignedIn
     ? `${userId}:${sessionId}:${organizationId ?? "personal"}:${claimTenantId ?? "mapped-tenant"}`
     : null;
@@ -106,22 +111,46 @@ export function AuthTenantProvider({ children }: { children: ReactNode }) {
       if (!token) throw new Error("Supabase access token is unavailable.");
       return anvilApi.TenantsController_getByClerkOrg(token, organizationId, signal);
     },
-    enabled: Boolean(isLoaded && organizationLoaded && isSignedIn && organizationId && !claimTenantId),
+    enabled: Boolean(isLoaded && isSignedIn && organizationId && !claimTenantId && !developmentTenantId),
     staleTime: 5 * 60_000,
     gcTime: 10 * 60_000,
     refetchOnWindowFocus: false,
-    retry: (failureCount, error) => !(error instanceof ApiError && error.status === 404) && failureCount < 1,
+    retry: (failureCount, error) => error instanceof ApiError && error.status === 404
+      ? failureCount < 3
+      : failureCount < 1,
+    retryDelay: (_attempt, error) => error instanceof ApiError && error.status === 404 ? 3_000 : 1_000,
   });
 
-  const tenantId = claimTenantId ?? tenantMappingQuery.data?.tenant_id ?? null;
+  const tenantId = claimTenantId ?? developmentTenantId ?? tenantMappingQuery.data?.tenant_id ?? null;
+
+  const onTenantMappingError = useCallback((error: unknown) => {
+    if (!organizationId) return;
+    const errorStatus = error instanceof ApiError ? error.status : null;
+    const errorMessage = error instanceof Error ? error.message : "Unknown tenant mapping error";
+    const errorKey = `${scope}:${organizationId}:${errorStatus}:${errorMessage}`;
+    if (lastLoggedMappingError.current === errorKey) return;
+    lastLoggedMappingError.current = errorKey;
+    console.error("Tenant organization mapping failed", { organizationId, userId, errorStatus, errorMessage });
+  }, [organizationId, scope, userId]);
+
+  // TanStack Query v5 removed useQuery's onError option; dispatch the equivalent
+  // callback after configured retries are exhausted to avoid logging each retry.
+  useEffect(() => {
+    if (tenantMappingQuery.isError) {
+      onTenantMappingError(tenantMappingQuery.error);
+    } else {
+      lastLoggedMappingError.current = null;
+    }
+  }, [onTenantMappingError, tenantMappingQuery.error, tenantMappingQuery.isError]);
 
   useEffect(() => {
-    if (!isLoaded || !organizationLoaded) return;
+    if (!isLoaded || (!organizationLoaded && !orgId && !developmentTenantId)) return;
     let active = true;
 
     if (lastScope.current !== scope) {
       queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== "clerk-org-tenant" });
       tokenCache.current = null;
+      lastLoggedMappingError.current = null;
       lastScope.current = scope;
       setSessionRevision((revision) => revision + 1);
     }
@@ -131,17 +160,17 @@ export function AuthTenantProvider({ children }: { children: ReactNode }) {
       return () => { active = false; };
     }
 
-    if (!claimTenantId && !organizationId) {
+    if (!claimTenantId && !developmentTenantId && !organizationId) {
       setExchangeState({ scope, status: "tenant-required", message: TENANT_REQUIRED_MESSAGE });
       return () => { active = false; };
     }
 
-    if (!claimTenantId && tenantMappingQuery.isPending) {
+    if (!claimTenantId && !developmentTenantId && tenantMappingQuery.isPending) {
       setExchangeState({ scope, status: "mapping", message: null });
       return () => { active = false; };
     }
 
-    if (!claimTenantId && tenantMappingQuery.isError) {
+    if (!claimTenantId && !developmentTenantId && tenantMappingQuery.isError) {
       const notProvisioned = tenantMappingQuery.error instanceof ApiError && tenantMappingQuery.error.status === 404;
       setExchangeState({
         scope,
@@ -168,17 +197,17 @@ export function AuthTenantProvider({ children }: { children: ReactNode }) {
       });
 
     return () => { active = false; };
-  }, [claimTenantId, getAccessToken, isLoaded, isSignedIn, organizationId, organizationLoaded, queryClient, scope, tenantId, tenantMappingQuery.error, tenantMappingQuery.isError, tenantMappingQuery.isPending]);
+  }, [claimTenantId, developmentTenantId, getAccessToken, isLoaded, isSignedIn, orgId, organizationId, organizationLoaded, queryClient, scope, tenantId, tenantMappingQuery.error, tenantMappingQuery.isError, tenantMappingQuery.isPending]);
 
   const status: TenantAuthStatus = !isLoaded
     ? "loading"
-    : !organizationLoaded
+    : !organizationLoaded && !orgId && !developmentTenantId
       ? "loading"
     : exchangeState.scope === scope
       ? exchangeState.status
       : !isSignedIn
         ? "signed-out"
-        : tenantMappingQuery.isPending && organizationId && !claimTenantId
+        : tenantMappingQuery.isPending && organizationId && !claimTenantId && !developmentTenantId
           ? "mapping"
           : tenantId
           ? "exchanging"
