@@ -4,11 +4,13 @@ import { UnrecoverableError, Worker, type ConnectionOptions } from 'bullmq';
 import { BULLMQ_CONNECTION, DOCUMENT_EXTRACT_QUEUE_NAME, DOCUMENT_EXTRACT_QUEUE } from '../modules/jobs/queue.tokens.js';
 import { ExtractionService } from '../modules/extraction/application/extraction.service.js';
 import type { ExtractionJobPayload } from '../modules/extraction/application/extraction.types.js';
+import { observeWorker, safeJobId } from './worker-observability.js';
 
 @Injectable()
 export class ExtractionWorker implements OnApplicationBootstrap, OnApplicationShutdown {
   private readonly logger = new Logger(ExtractionWorker.name);
   private worker: Worker<ExtractionJobPayload> | undefined;
+  private heartbeat: NodeJS.Timeout | undefined;
 
   constructor(
     private readonly extraction: ExtractionService,
@@ -18,10 +20,14 @@ export class ExtractionWorker implements OnApplicationBootstrap, OnApplicationSh
   onApplicationBootstrap(): void {
     this.worker = new Worker<ExtractionJobPayload>(
       DOCUMENT_EXTRACT_QUEUE_NAME,
-      async (job) => this.processJob(job.data),
+      async (job) => {
+        const result = await this.processJob(job.data);
+        this.logger.log({ event: 'extraction_result', queue: DOCUMENT_EXTRACT_QUEUE_NAME, jobId: safeJobId(job.id), status: result.status, factCount: result.factCount }, 'Extraction job result');
+        return result;
+      },
       { connection: this.connection },
     );
-    this.worker.on('error', () => this.logger.error('Extraction worker emitted an error; details omitted.'));
+    this.heartbeat = observeWorker(this.worker, this.logger, DOCUMENT_EXTRACT_QUEUE_NAME);
   }
 
   async processJob(payload: ExtractionJobPayload) {
@@ -30,5 +36,8 @@ export class ExtractionWorker implements OnApplicationBootstrap, OnApplicationSh
     return result;
   }
 
-  async onApplicationShutdown(): Promise<void> { await this.worker?.close(); }
+  async onApplicationShutdown(): Promise<void> {
+    if (this.heartbeat) clearInterval(this.heartbeat);
+    await this.worker?.close();
+  }
 }

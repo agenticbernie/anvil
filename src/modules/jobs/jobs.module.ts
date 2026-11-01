@@ -1,8 +1,9 @@
-import { Module } from '@nestjs/common';
+import { Logger, Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Queue } from 'bullmq';
 import { Redis } from 'ioredis';
 import type { OnApplicationShutdown } from '@nestjs/common';
+import { safeErrorDetails } from '../../common/logging/safe-error-details.js';
 import {
   BULLMQ_CONNECTION, DOCUMENT_PARSE_DLQ_QUEUE, DOCUMENT_PARSE_DLQ_QUEUE_NAME,
   DOCUMENT_PARSE_QUEUE, DOCUMENT_PARSE_QUEUE_NAME, DOCUMENT_EXTRACT_QUEUE, DOCUMENT_EXTRACT_QUEUE_NAME,
@@ -10,6 +11,37 @@ import {
 } from './queue.tokens.js';
 
 interface RedisCredentials { readonly url: string; readonly token: string; }
+
+function observeRedis(connection: Redis, credentials: RedisCredentials): void {
+  const logger = new Logger('RedisConnection');
+  const url = new URL(credentials.url);
+  logger.log({ event: 'redis_connecting', urlConfigured: true, tokenConfigured: Boolean(credentials.token), urlPasswordConfigured: Boolean(url.password), tls: url.protocol === 'rediss:' }, 'Connecting to queue Redis');
+  const startupTimer = setTimeout(() => {
+    if (connection.status !== 'ready') logger.warn({ event: 'redis_not_ready', status: connection.status }, 'Queue Redis has not become ready');
+  }, 5_000);
+  startupTimer.unref();
+  let pingPending = false;
+  let lastDisconnectLog = 0;
+  connection.on('ready', () => {
+    clearTimeout(startupTimer);
+    logger.log({ event: 'redis_ready', status: connection.status }, 'Queue Redis connection ready');
+    if (pingPending) return;
+    pingPending = true;
+    const pingTimer = setTimeout(() => logger.warn({ event: 'redis_ping_timeout' }, 'Queue Redis PING did not complete within five seconds'), 5_000);
+    pingTimer.unref();
+    void connection.ping()
+      .then((reply) => logger.log({ event: 'redis_ping', result: reply === 'PONG' ? 'PONG' : 'unexpected' }, 'Queue Redis PING completed'))
+      .catch((error: unknown) => logger.error({ event: 'redis_ping_failed', ...safeErrorDetails(error) }, 'Queue Redis PING failed'))
+      .finally(() => { clearTimeout(pingTimer); pingPending = false; });
+  });
+  connection.on('error', (error) => logger.error({ event: 'redis_error', ...safeErrorDetails(error) }, 'Queue Redis connection error'));
+  connection.on('reconnecting', (delay: number) => {
+    if (Date.now() - lastDisconnectLog < 30_000) return;
+    lastDisconnectLog = Date.now();
+    logger.warn({ event: 'redis_reconnecting', delayMs: delay }, 'Queue Redis reconnecting');
+  });
+  connection.on('end', () => clearTimeout(startupTimer));
+}
 
 function redisOptions(config: RedisCredentials) {
   if (!config.url) throw new Error('UPSTASH_REDIS_URL is required by the worker process.');
@@ -41,10 +73,12 @@ class QueueShutdown implements OnApplicationShutdown {
     {
       provide: BULLMQ_CONNECTION,
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => new Redis(redisOptions({
-        url: config.get<string>('redis.url', ''),
-        token: config.get<string>('redis.token', ''),
-      })),
+      useFactory: (config: ConfigService) => {
+        const credentials = { url: config.get<string>('redis.url', ''), token: config.get<string>('redis.token', '') };
+        const connection = new Redis(redisOptions(credentials));
+        observeRedis(connection, credentials);
+        return connection;
+      },
     },
     {
       provide: DOCUMENT_PARSE_QUEUE,

@@ -12,6 +12,7 @@ import type {
 } from '../modules/documents/application/document.types.js';
 import { DocumentEncryptionError, DocumentEncryptionService } from '../modules/documents/infrastructure/document-encryption.service.js';
 import { BULLMQ_CONNECTION, DOCUMENT_PARSE_QUEUE_NAME } from '../modules/jobs/queue.tokens.js';
+import { observeWorker } from './worker-observability.js';
 
 const WORKER_VERSION = 'mock-document-parse-v1';
 
@@ -23,6 +24,7 @@ export class DocumentIntegrityError extends Error {
 export class DocumentParseWorker implements OnApplicationBootstrap, OnApplicationShutdown {
   private readonly logger = new Logger(DocumentParseWorker.name);
   private worker: Worker<DocumentProcessingPayload> | undefined;
+  private heartbeat: NodeJS.Timeout | undefined;
 
   constructor(
     @Inject(DOCUMENT_REPOSITORY) private readonly documents: DocumentRepository,
@@ -43,10 +45,11 @@ export class DocumentParseWorker implements OnApplicationBootstrap, OnApplicatio
       async (job) => this.processJob(job.data),
       { connection: this.connection, concurrency: this.config.get<number>('redis.workerConcurrency', 1) },
     );
-    this.worker.on('error', () => this.logger.error('Document parse worker emitted an error; details omitted.'));
+    this.heartbeat = observeWorker(this.worker, this.logger, DOCUMENT_PARSE_QUEUE_NAME);
   }
 
   async onApplicationShutdown(): Promise<void> {
+    if (this.heartbeat) clearInterval(this.heartbeat);
     await this.worker?.close();
   }
 

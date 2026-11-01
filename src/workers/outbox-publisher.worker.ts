@@ -11,6 +11,7 @@ import {
 import type { ExtractionJobPayload } from '../modules/extraction/application/extraction.types.js';
 import type { MemoGenerationPayload } from '../modules/memos/application/memo.types.js';
 import { Inject } from '@nestjs/common';
+import { safeErrorDetails } from '../common/logging/safe-error-details.js';
 
 const COMPLETED_JOB_RETENTION = { age: 24 * 60 * 60, count: 1_000 };
 const FAILED_JOB_RETENTION = { age: 7 * 24 * 60 * 60, count: 5_000 };
@@ -19,6 +20,7 @@ const FAILED_JOB_RETENTION_MS = FAILED_JOB_RETENTION.age * 1_000;
 const NOTIFICATION_WAITING_RETENTION_MS = 7 * 24 * 60 * 60 * 1_000;
 const QUEUE_CLEANUP_INTERVAL_MS = 60 * 60 * 1_000;
 const QUEUE_CLEANUP_BATCH_SIZE = 1_000;
+const SCAN_LOG_INTERVAL_MS = 30_000;
 
 type CleanableQueueState = 'completed' | 'failed' | 'wait' | 'paused';
 
@@ -29,6 +31,9 @@ export class OutboxPublisherWorker implements OnApplicationBootstrap, OnApplicat
   private queueCleanupTimer: NodeJS.Timeout | undefined;
   private polling = false;
   private queueCleanupRunning = false;
+  private lastScanLogAt = 0;
+  private pollStartedAt = 0;
+  private lastBusyLogAt = 0;
 
   constructor(
     @Inject(OUTBOX_REPOSITORY) private readonly outbox: OutboxRepository,
@@ -41,6 +46,8 @@ export class OutboxPublisherWorker implements OnApplicationBootstrap, OnApplicat
   ) {}
 
   onApplicationBootstrap(): void {
+    this.logger.log({ event: 'outbox_publisher_started', pollIntervalMs: 1_000 }, 'Outbox publisher started');
+    void this.poll();
     this.pollTimer = setInterval(() => { void this.poll().catch((error: unknown) => this.logFailure(error)); }, 1_000);
     this.pollTimer.unref();
     this.queueCleanupTimer = setInterval(() => {
@@ -56,7 +63,12 @@ export class OutboxPublisherWorker implements OnApplicationBootstrap, OnApplicat
   }
 
   async publishPendingBatch(limit = 25): Promise<number> {
+    if (Date.now() - this.lastScanLogAt >= SCAN_LOG_INTERVAL_MS) {
+      this.lastScanLogAt = Date.now();
+      this.logger.log({ event: 'outbox_scan', limit }, 'Scanning pending and expired publishing outbox events');
+    }
     const events = await this.outbox.claimPending(limit);
+    if (events.length > 0) this.logger.log({ event: 'outbox_claimed', count: events.length }, 'Outbox events claimed');
     for (const event of events) await this.publishOne(event);
     return events.length;
   }
@@ -141,9 +153,12 @@ export class OutboxPublisherWorker implements OnApplicationBootstrap, OnApplicat
           break;
         }
       }
+      this.logger.log({ event: 'outbox_enqueued', eventId: event.id, eventType: event.eventType }, 'Outbox event pushed to queue');
       await this.unitOfWork.run({ tenantId: event.tenantId, actorId: event.actorId }, (transaction) =>
         this.outbox.markPublished(event.tenantId, event.actorId, event.id, transaction));
+      this.logger.log({ event: 'outbox_published', eventId: event.id, eventType: event.eventType }, 'Outbox event marked published');
     } catch (error) {
+      this.logger.error({ event: 'outbox_publish_failed', eventId: event.id, eventType: event.eventType, ...safeErrorDetails(error) }, 'Failed to publish outbox event');
       try {
         await this.unitOfWork.run({ tenantId: event.tenantId, actorId: event.actorId }, (transaction) =>
           this.outbox.retryOrDeadLetter(event.tenantId, event.actorId, event, errorMessage(error), transaction));
@@ -155,8 +170,15 @@ export class OutboxPublisherWorker implements OnApplicationBootstrap, OnApplicat
   }
 
   private async poll(): Promise<void> {
-    if (this.polling) return;
+    if (this.polling) {
+      if (Date.now() - this.lastBusyLogAt >= SCAN_LOG_INTERVAL_MS && Date.now() - this.pollStartedAt >= SCAN_LOG_INTERVAL_MS) {
+        this.lastBusyLogAt = Date.now();
+        this.logger.warn({ event: 'outbox_poll_still_running', durationMs: Date.now() - this.pollStartedAt }, 'Outbox poll is still waiting on database or queue');
+      }
+      return;
+    }
     this.polling = true;
+    this.pollStartedAt = Date.now();
     try {
       await this.publishPendingBatch();
     } catch (error) {
@@ -166,8 +188,8 @@ export class OutboxPublisherWorker implements OnApplicationBootstrap, OnApplicat
     }
   }
 
-  private logFailure(_error: unknown): void {
-    this.logger.error('Outbox publisher cycle failed; details omitted.');
+  private logFailure(error: unknown): void {
+    this.logger.error({ event: 'outbox_cycle_failed', ...safeErrorDetails(error) }, 'Outbox publisher cycle failed');
   }
 }
 

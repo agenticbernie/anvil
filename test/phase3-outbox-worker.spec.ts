@@ -7,7 +7,7 @@ import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 import { PostgreSqlContainer } from '@testcontainers/postgresql';
 import { RedisContainer } from '@testcontainers/redis';
-import { Queue } from 'bullmq';
+import { Queue, QueueEvents } from 'bullmq';
 import { Redis as RedisClient } from 'ioredis';
 import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
 import { Pool } from 'pg';
@@ -27,6 +27,7 @@ import { CaseDocumentsController, DocumentsController } from '../src/modules/doc
 import { DocumentService } from '../src/modules/documents/application/document.service.js';
 import type { DocumentProcessingPayload, StorageProvider } from '../src/modules/documents/application/document.types.js';
 import type { ExtractionJobPayload } from '../src/modules/extraction/application/extraction.types.js';
+import type { ExtractionService } from '../src/modules/extraction/application/extraction.service.js';
 import type { MemoGenerationPayload } from '../src/modules/memos/application/memo.types.js';
 import { PostgresDocumentRepository } from '../src/modules/documents/infrastructure/postgres-document.repository.js';
 import { PostgresDocumentReservationMaintenanceRepository } from '../src/modules/documents/infrastructure/postgres-document-reservation-maintenance.repository.js';
@@ -42,6 +43,7 @@ import {
 import { DocumentParseWorker } from '../src/workers/document-parse.worker.js';
 import { DocumentReservationCleanupWorker } from '../src/workers/document-reservation-cleanup.worker.js';
 import { OutboxPublisherWorker } from '../src/workers/outbox-publisher.worker.js';
+import { ExtractionWorker } from '../src/workers/extraction.worker.js';
 
 const tenantId = '00000000-0000-4000-8000-000000000001';
 const actorId = '00000000-0000-4000-8000-000000000011';
@@ -287,6 +289,34 @@ describe('Phase 3 outbox and worker integration', () => {
     expect(extractedSource.rows).toEqual([{ source_kind: 'mock', source_page_count: 1, encrypted: true }]);
     expect(storageReadCount).toBe(1);
     expect(await dlqQueue.getJob(processingJobId)).toBeUndefined();
+
+    const pendingExtraction = await pool.query<{ id: string; status: string }>(
+      `SELECT id::text AS id, status FROM public.outbox_events
+       WHERE tenant_id = $1 AND event_type = 'document.extract.requested' AND payload->>'processingJobId' = $2`,
+      [tenantId, processingJobId],
+    );
+    expect(pendingExtraction.rows).toHaveLength(1);
+    expect(pendingExtraction.rows[0]?.status).toBe('pending');
+    const eventId = pendingExtraction.rows[0]!.id;
+    const received: ExtractionJobPayload[] = [];
+    const extractionService = { process: async (payload: ExtractionJobPayload) => { received.push(payload); return { status: 'succeeded', factCount: 0 }; } } as unknown as ExtractionService;
+    const consumer = new ExtractionWorker(extractionService, redisClient);
+    const queueEvents = new QueueEvents(DOCUMENT_EXTRACT_QUEUE_NAME, { connection: redisClient });
+    try {
+      await queueEvents.waitUntilReady();
+      consumer.onApplicationBootstrap();
+      expect(await publisher.publishPendingBatch()).toBe(1);
+      const extractionJob = await extractionQueue.getJob(eventId);
+      expect(extractionJob).toBeDefined();
+      await extractionJob!.waitUntilFinished(queueEvents, 10_000);
+      expect(received).toHaveLength(1);
+      expect(received[0]).toMatchObject({ tenantId, actorId, caseId, documentId: presign.body.documentId, processingJobId });
+      const published = await pool.query<{ status: string }>('SELECT status FROM public.outbox_events WHERE tenant_id = $1 AND id = $2', [tenantId, eventId]);
+      expect(published.rows[0]?.status).toBe('published');
+    } finally {
+      await consumer.onApplicationShutdown();
+      await queueEvents.close();
+    }
   });
 
   it('expires abandoned upload reservations and removes their staging object', async () => {
