@@ -15,6 +15,7 @@ export class SupabaseJwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     super();
     const jwksUrl = config.get<string>('SUPABASE_JWKS_URL') ?? process.env.SUPABASE_JWKS_URL ?? '';
     const supabaseUrl = config.get<string>('SUPABASE_URL') ?? process.env.SUPABASE_URL ?? '';
+
     this.jwks = jwksUrl && supabaseUrl ? createRemoteJWKSet(new URL(jwksUrl)) : null;
     this.issuer = jwksUrl && supabaseUrl ? new URL('/auth/v1', `${supabaseUrl.replace(/\/$/, '')}/`).toString() : null;
   }
@@ -31,15 +32,28 @@ export class SupabaseJwtStrategy extends PassportStrategy(Strategy, 'jwt') {
         audience: 'authenticated',
         algorithms: ['ES256', 'RS256'],
         requiredClaims: ['sub', 'iat', 'exp', 'role'],
+        clockTolerance: 10, // 🔥 THÊM DÒNG NÀY: Chấp nhận lệch giờ 10 giây giữa Render và Supabase
       });
+
       if (payload.role !== 'authenticated' || typeof payload.sub !== 'string' || !isUuid(payload.sub)) {
         throw new UnauthorizedException('JWT claims are not valid for an authenticated Supabase user.');
       }
+
       const appMetadata = isRecord(payload.app_metadata) ? payload.app_metadata : {};
       return { id: payload.sub, appMetadata };
-    } catch (error) {
+
+    } catch (error: any) {
+      // 🔥 LOG LỖI THẬT SỰ TỪ JOSE RA CONSOLE ĐỂ BIẾT CHÍNH XÁC NGUYÊN NHÂN
+      console.error('❌ [SupabaseJwtStrategy] JWT Verification Failed:', {
+        errorMessage: error.message,
+        errorCode: error.code, // Ví dụ: 'ERR_JWT_EXPIRED', 'ERR_JWS_INVALID'
+        expectedIssuer: this.issuer,
+      });
+
       if (error instanceof UnauthorizedException) throw error;
-      throw new UnauthorizedException('Bearer token is invalid or expired.');
+
+      // Trả về lỗi chi tiết hơn một chút để fen dễ debug (có thể bỏ 'Detail:...' khi production)
+      throw new UnauthorizedException(`Bearer token is invalid or expired. Detail: ${error.message}`);
     }
   }
 }
