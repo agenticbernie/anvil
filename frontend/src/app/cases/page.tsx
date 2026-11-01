@@ -6,6 +6,7 @@ import { Badge } from "@astryxdesign/core/Badge";
 import { Button } from "@astryxdesign/core/Button";
 import { useToast } from "@astryxdesign/core/Toast";
 import { useCases } from "@/hooks/useCases";
+import { CreateCaseModal } from "@/components/cases/CreateCaseModal";
 import { ApiError, type CreditCase } from "@/lib/api/client";
 import { useAuthTenant } from "@/lib/auth/tenant-context";
 
@@ -74,6 +75,7 @@ export default function CasesPage() {
           <div className="flex items-center gap-3">
             {query.isFetching && <span className="text-xs text-slate-500">Refreshing…</span>}
             <Button label="Refresh" variant="secondary" size="sm" onClick={() => void query.refetch()} isDisabled={!credentials || query.isFetching} />
+            <CreateCaseModal onCreated={() => setCursorStack([undefined])} />
           </div>
         </div>
 

@@ -6,6 +6,8 @@ import type { ApiCredentials } from "@/lib/auth/tenant-context";
 export type CreditCase = paths["/v1/cases"]["get"]["responses"]["200"]["content"]["application/json"]["items"][number];
 export type CasePage = paths["/v1/cases"]["get"]["responses"]["200"]["content"]["application/json"];
 export type CaseDetail = paths["/v1/cases/{id}"]["get"]["responses"]["200"]["content"]["application/json"];
+export type CreateCaseRequest = components["schemas"]["CreateCaseDto"];
+export type CreatedCase = paths["/v1/cases"]["post"]["responses"]["201"]["content"]["application/json"];
 export type CaseDocuments = paths["/v1/cases/{caseId}/documents"]["get"]["responses"]["200"]["content"]["application/json"];
 export type CaseDocument = CaseDocuments["items"][number];
 export type CaseFacts = paths["/v1/cases/{caseId}/facts"]["get"]["responses"]["200"]["content"]["application/json"];
@@ -122,6 +124,15 @@ export const anvilApi = {
     if (params.cursor !== undefined) query.set("cursor", params.cursor);
     const suffix = query.size ? `?${query.toString()}` : "";
     return requestJson<CasePage>(`/v1/cases${suffix}`, credentials, { method: "GET", signal });
+  },
+
+  CasesController_create(credentials: ApiCredentials, body: CreateCaseRequest, idempotencyKey: string) {
+    return requestJson<CreatedCase>(
+      "/v1/cases",
+      credentials,
+      { method: "POST", body: JSON.stringify(body) },
+      idempotencyKey,
+    );
   },
 
   CasesController_findOne(credentials: ApiCredentials, id: string, signal?: AbortSignal) {

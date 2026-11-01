@@ -6,6 +6,7 @@ import {
   anvilApi,
   type CaseFacts,
   type CaseMemoSummary,
+  type CreateCaseRequest,
   type FactReviewStatus,
   type ApproveMemoRequest,
   type UpdateFactRequest,
@@ -22,6 +23,26 @@ export function useCases(params: { limit: number; cursor?: string }) {
       return anvilApi.CasesController_list(credentials, params, signal);
     },
     enabled: Boolean(credentials),
+  });
+}
+
+export function useCreateCase() {
+  const { credentials } = useAuthTenant();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ body, idempotencyKey }: { body: CreateCaseRequest; idempotencyKey: string }) => {
+      if (!credentials) throw new Error("Connect an API session before creating a case.");
+      return anvilApi.CasesController_create(credentials, body, idempotencyKey);
+    },
+    onSuccess: () => {
+      if (!credentials) return;
+      // Invalidate every cursor page for this tenant/session after creation.
+      void queryClient.invalidateQueries({
+        queryKey: ["cases", credentials.tenantId, credentials.sessionRevision],
+        refetchType: "all",
+      });
+    },
+    gcTime: 0,
   });
 }
 
