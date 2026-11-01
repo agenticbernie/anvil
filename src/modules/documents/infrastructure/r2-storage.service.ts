@@ -41,7 +41,11 @@ export class R2StorageService implements StorageProvider {
         ContentType: contentType,
         Metadata: { sha256 },
       }),
-      { expiresIn: expiresInSeconds, signableHeaders: new Set(['content-length', 'content-type']) },
+      {
+        expiresIn: expiresInSeconds,
+        signableHeaders: new Set(['content-length', 'content-type']),
+        unhoistableHeaders: new Set(['x-amz-meta-sha256']),
+      },
     );
     return { uploadUrl, requiredHeaders, expiresAt: new Date(Date.now() + expiresInSeconds * 1_000).toISOString() };
   }

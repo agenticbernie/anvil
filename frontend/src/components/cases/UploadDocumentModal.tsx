@@ -39,7 +39,6 @@ export function UploadDocumentModal({
   const [file, setFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [stage, setStage] = useState<UploadStage | "complete" | null>(null);
-  const [progress, setProgress] = useState(0);
   const [safeError, setSafeError] = useState("");
 
   useEffect(() => {
@@ -50,6 +49,7 @@ export function UploadDocumentModal({
           "Choose a PDF, JPEG, PNG, or DOCX file.",
           "File size must be between 1 byte and 50 MiB.",
           "The signed upload length does not match the encrypted file.",
+          "The signed upload content type does not match the selected file.",
           "The signed file upload failed. Request a new upload URL and retry.",
           "The signed file upload could not reach storage. Check the connection and retry.",
           "The file upload was cancelled.",
@@ -63,7 +63,6 @@ export function UploadDocumentModal({
   function open() {
     setFile(null);
     setStage(null);
-    setProgress(0);
     setSafeError("");
     setIsOpen(true);
   }
@@ -85,11 +84,9 @@ export function UploadDocumentModal({
   async function submit() {
     if (!file || !credentials) return;
     setSafeError("");
-    setProgress(0);
     try {
       const result = await upload.uploadFile(file, {
         onStage: setStage,
-        onProgress: setProgress,
       });
       setStage("complete");
       await Promise.all([
@@ -148,13 +145,9 @@ export function UploadDocumentModal({
               <div className="mt-5" role="status" aria-live="polite">
                 <div className="mb-2 flex justify-between gap-3 text-xs text-slate-600">
                   <span>{stageLabels[stage]}</span>
-                  {stage === "uploading" && <span>{progress}%</span>}
                 </div>
-                <div className="h-2 overflow-hidden rounded-full bg-slate-100" role="progressbar" aria-label="Encrypted upload progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={stage === "uploading" ? progress : 0}>
-                  <div
-                    className={`h-full rounded-full bg-emerald-700 transition-[width] duration-300 ${stage !== "uploading" ? "w-1/3 animate-pulse" : ""}`}
-                    style={stage === "uploading" ? { width: `${progress}%` } : undefined}
-                  />
+                <div className="h-2 overflow-hidden rounded-full bg-slate-100" role="progressbar" aria-label="Encrypted upload progress">
+                  <div className="h-full w-1/3 animate-pulse rounded-full bg-emerald-700" />
                 </div>
               </div>
             )}

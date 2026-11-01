@@ -18,6 +18,8 @@ import { R2StorageService, type R2StorageConfig } from '../../modules/documents/
       };
       const client = new S3Client({
         region: r2.region,
+        // Presigning has no upload body; do not sign an automatically computed empty-body checksum.
+        requestChecksumCalculation: 'WHEN_REQUIRED',
         ...(r2.endpoint ? { endpoint: r2.endpoint } : {}),
         ...(r2.accessKeyId && r2.secretAccessKey
           ? { credentials: { accessKeyId: r2.accessKeyId, secretAccessKey: r2.secretAccessKey } }

@@ -1,5 +1,6 @@
 import type { ApiCredentials } from "@/lib/auth/tenant-context";
 import { anvilApi, type ConfirmedDocument } from "./client";
+import { putPresignedObject } from "./presigned-upload";
 
 const allowedTypes = new Set([
   "application/pdf",
@@ -24,45 +25,6 @@ function sha256Hex(value: ArrayBuffer) {
   return crypto.subtle.digest("SHA-256", value).then((digest) =>
     Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join(""),
   );
-}
-
-function putPresignedObject(
-  uploadUrl: string,
-  requiredHeaders: Record<string, string>,
-  ciphertext: ArrayBuffer,
-  onProgress?: (percent: number) => void,
-) {
-  return new Promise<void>((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open("PUT", uploadUrl);
-    xhr.withCredentials = false;
-
-    for (const [name, value] of Object.entries(requiredHeaders)) {
-      // Browsers forbid setting Content-Length manually. The ArrayBuffer body makes the browser
-      // send its exact byte length; validate it matches the signed header before sending.
-      if (name.toLowerCase() === "content-length") {
-        if (Number(value) !== ciphertext.byteLength) {
-          reject(new Error("The signed upload length does not match the encrypted file."));
-          return;
-        }
-        continue;
-      }
-      xhr.setRequestHeader(name, value);
-    }
-
-    xhr.upload.onprogress = (event) => {
-      if (!onProgress) return;
-      const total = event.lengthComputable && event.total > 0 ? event.total : ciphertext.byteLength;
-      onProgress(Math.min(100, Math.round((event.loaded / total) * 100)));
-    };
-    xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) resolve();
-      else reject(new Error("The signed file upload failed. Request a new upload URL and retry."));
-    };
-    xhr.onerror = () => reject(new Error("The signed file upload could not reach storage. Check the connection and retry."));
-    xhr.onabort = () => reject(new Error("The file upload was cancelled."));
-    xhr.send(ciphertext);
-  });
 }
 
 /** Executes only the presign → browser encryption → signed object PUT → confirm contract. */
@@ -107,7 +69,7 @@ export async function uploadCaseDocument(
     );
     callbacks.onStage?.("uploading");
     callbacks.onProgress?.(0);
-    await putPresignedObject(reservation.uploadUrl, reservation.requiredHeaders, encrypted, callbacks.onProgress);
+    await putPresignedObject(reservation.uploadUrl, reservation.requiredHeaders, encrypted, file.type);
     callbacks.onProgress?.(100);
   } finally {
     // Keep the one-time key bytes only as long as this upload operation needs them.
