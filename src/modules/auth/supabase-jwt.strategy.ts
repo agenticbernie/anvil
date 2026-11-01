@@ -16,6 +16,10 @@ export class SupabaseJwtStrategy extends PassportStrategy(Strategy, 'jwt') {
     const jwksUrl = config.get<string>('SUPABASE_JWKS_URL') ?? process.env.SUPABASE_JWKS_URL ?? '';
     const supabaseUrl = config.get<string>('SUPABASE_URL') ?? process.env.SUPABASE_URL ?? '';
 
+    // 🔥 THÊM DÒNG LOG NÀY ĐỂ SOI 🔥
+    console.log('🔍 [DEBUG] SUPABASE_JWKS_URL thực tế là:', JSON.stringify(jwksUrl));
+    console.log('🔍 [DEBUG] SUPABASE_URL thực tế là:', JSON.stringify(supabaseUrl));
+
     this.jwks = jwksUrl && supabaseUrl ? createRemoteJWKSet(new URL(jwksUrl)) : null;
     this.issuer = jwksUrl && supabaseUrl ? new URL('/auth/v1', `${supabaseUrl.replace(/\/$/, '')}/`).toString() : null;
   }
